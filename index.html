@@ -35,7 +35,7 @@
       <div class="howto-body">
         <p><b>What this is.</b> A live accounts-receivable aging console over a synthetic invoice ledger. Every figure on this page is a real SQL query executed in your browser (SQLite compiled to WebAssembly) — nothing is hard-coded.</p>
         <p><b>Tabs.</b> <b>Dashboard</b> — portfolio KPIs, trends and receivables aging. <b>Collections Watchlist</b> — rule-based risk flags on the live ledger. <b>AI Extract</b> — parse a pasted invoice and cross-check it against the ledger. <b>SQL Console</b> — run your own queries.</p>
-        <p><b>Data &amp; currency.</b> Deterministic synthetic data — 30 customers, 180 invoices, fixed seed. All amounts are shown in ILS (₪). Invoices issued in another currency are converted at fixed, illustrative rates: <b>USD&#8594;ILS 3.70</b>, <b>EUR&#8594;ILS 4.00</b> (as of 2026-07-15). A small currency tag marks any invoice converted from a non-ILS original.</p>
+        <p><b>Data &amp; currency.</b> Deterministic synthetic data — 30 customers, 180 invoices, fixed seed. All amounts are shown in ILS (₪). Invoices issued in another currency are converted to ILS using the latest published exchange rate, fetched live when the page loads (with a fixed fallback if the rate service is unavailable). A small currency tag marks any invoice converted from a non-ILS original.<br><span id="fxNote" class="fx-note">Loading live rates…</span></p>
         <p><b>Metric definitions.</b></p>
         <ul>
           <li><b>DSO (Days Sales Outstanding)</b> — average days an invoice stays open, from issue date to repayment (or to today if still unpaid).</li>
@@ -140,7 +140,7 @@ FROM deals GROUP BY status ORDER BY financed_ils DESC;</textarea>
   </section>
 
   <div class="footnote">
-    Synthetic dataset · 30 customers · 180 invoices · deterministic seed · figures in ILS (USD→3.70, EUR→4.00).<br>
+    Synthetic dataset · 30 customers · 180 invoices · deterministic seed · figures in ILS · USD/EUR converted at the latest published rate.<br>
     Portfolio build — real SQLite (sql.js / WebAssembly) client-side; every dashboard number is a live SQL query.
   </div>
 </div>

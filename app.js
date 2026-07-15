@@ -6,7 +6,8 @@ const ri=(min,max)=>Math.floor(rand()*(max-min+1))+min;
 const rf=(min,max)=>rand()*(max-min)+min;
 function pickW(items){const tot=items.reduce((s,i)=>s+i[1],0);let r=rand()*tot;for(const[v,w]of items){if(r<w)return v;r-=w;}return items[0][0];}
 const DAY=86400000, TODAY=new Date('2026-07-15');
-const FX={ILS:1,USD:3.70,EUR:4.00}; // illustrative FX rates to ILS, as of 2026-07-15
+let FX={ILS:1,USD:3.70,EUR:4.00}; // ILS conversion rates — fallback defaults, overwritten by live rates on boot
+let FX_INFO={live:false,date:null,source:'fallback'};
 const fmtDate=d=>d.toISOString().slice(0,10);
 const addDays=(d,n)=>new Date(d.getTime()+n*DAY);
 
@@ -16,16 +17,18 @@ const industries=["Construction","Food & Beverage","Logistics","Manufacturing","
 const buyers=["MegaMart Retail Group","FreshLine Foods","BuildCorp Holdings","MetroGrid Utilities","PharmaPlus Distribution","TechNova Systems","UrbanBuild","GreenField Agro","PrimeLogistics","Coastal Distribution","Northgate Retail","Solaris Energy","BlueHarbor Trading","Vertex Manufacturing","CityLine Markets"];
 const analysts=["system","R. Cohen","M. Levi","D. Azoulay","N. Friedman","T. Bar"];
 
-const customers=[]; const usedNames=new Set();
-for(let i=1;i<=30;i++){
+const customers=[], deals=[], events=[];
+function generateData(){
+  const usedNames=new Set();
+  for(let i=1;i<=30;i++){
   let name; do{name=`${pick(geo)} ${pick(suf)} Ltd`;}while(usedNames.has(name)); usedNames.add(name);
   const rating=pickW([["A",25],["B",40],["C",25],["D",10]]);
   const limitBase={A:2500000,B:1500000,C:800000,D:400000}[rating];
   customers.push({customer_id:i,customer_name:name,industry:pick(industries),onboarded_date:fmtDate(addDays(new Date('2023-06-01'),ri(0,900))),credit_rating:rating,credit_limit:Math.round(limitBase*rf(0.7,1.3)/10000)*10000});
 }
 
-const deals=[],events=[]; let evId=1; const invSeen={};
-for(let i=1;i<=180;i++){
+  let evId=1; const invSeen={};
+  for(let i=1;i<=180;i++){
   const sup=pick(customers);
   let invAmt=Math.round(Math.exp(rf(9.6,13.4))/100)*100;
   const currency=pickW([["ILS",84],["USD",11],["EUR",5]]);
@@ -62,6 +65,7 @@ for(let i=1;i<=180;i++){
   if(financed)push("Financed",financed);
   if(repaid)push("Repaid",repaid);
   if(status==="Overdue")push("Flagged",addDays(due,ri(1,4)));
+  }
 }
 
 const SCHEMA={
@@ -83,16 +87,38 @@ let db; const $=id=>document.getElementById(id);
 const money=n=>n==null?'':Number(n).toLocaleString('en-US');
 const C={accent:'#0B7A5B',indigo:'#2B3E63',amber:'#C77A0A',danger:'#B42318',teal:'#2E9C8E',slate:'#8695AD',mint:'#66B79A',blue:'#3E5C99'};
 
-initSqlJs({locateFile:f=>`https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${f}`})
- .then(SQL=>{
-   db=new SQL.Database(); buildTables();
-   renderKpis(); renderCharts(); renderRecent();
-   buildExceptions(); renderExceptions();
-   setupAI();
-   renderSchema(); renderChips(); runQuery($('editor').value);
-   const v=$('veil'); v.style.opacity='0'; setTimeout(()=>v.remove(),400);
- })
- .catch(err=>{$('veil-msg').textContent='Could not load the SQL engine (network blocked). Open the downloaded file directly.';console.error(err);});
+async function fetchLiveRates(){
+  try{
+    const ctrl=new AbortController(); const t=setTimeout(()=>ctrl.abort(),4000);
+    const res=await fetch('https://open.er-api.com/v6/latest/USD',{signal:ctrl.signal,cache:'no-store'});
+    clearTimeout(t);
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const j=await res.json();
+    const usdIls=j.rates&&j.rates.ILS, usdEur=j.rates&&j.rates.EUR;
+    if(usdIls>0 && usdEur>0){ FX.USD=usdIls; FX.EUR=usdIls/usdEur; FX_INFO={live:true,date:j.time_last_update_utc||'',source:'open.er-api.com'}; }
+  }catch(e){ FX_INFO={live:false,date:null,source:'fallback'}; }
+}
+function renderFxNote(){
+  const el=$('fxNote'); if(!el) return;
+  const u=Number(FX.USD).toFixed(2), e=Number(FX.EUR).toFixed(2);
+  el.innerHTML=FX_INFO.live
+    ? `Live rates · source ${FX_INFO.source} · ${FX_INFO.date} — <b>USD&#8594;ILS ${u}</b>, <b>EUR&#8594;ILS ${e}</b>.`
+    : `Live rate service unavailable — using fallback: <b>USD&#8594;ILS ${u}</b>, <b>EUR&#8594;ILS ${e}</b>.`;
+}
+(async()=>{
+  try{
+    await fetchLiveRates();
+    generateData();
+    const SQL=await initSqlJs({locateFile:f=>`https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${f}`});
+    db=new SQL.Database(); buildTables();
+    renderKpis(); renderCharts(); renderRecent();
+    buildExceptions(); renderExceptions();
+    setupAI();
+    renderSchema(); renderChips(); runQuery($('editor').value);
+    renderFxNote();
+    const v=$('veil'); v.style.opacity='0'; setTimeout(()=>v.remove(),400);
+  }catch(err){$('veil-msg').textContent='Could not load the SQL engine (network blocked). Open the downloaded file directly.';console.error(err);}
+})();
 
 function buildTables(){
   db.run(`CREATE TABLE customers(customer_id INTEGER PRIMARY KEY,customer_name TEXT,industry TEXT,onboarded_date TEXT,credit_rating TEXT,credit_limit INTEGER);`);
