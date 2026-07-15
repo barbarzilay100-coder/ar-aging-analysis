@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Deal Flow — Operations Console</title>
+<title>AR Aging Analysis — Receivables Console</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -17,12 +17,12 @@
 <div class="app">
   <header class="topbar">
     <div class="brand">
-      <div class="mark">DF</div>
-      <div><h1>Deal Flow — Operations Console</h1><div class="sub">Invoice financing &amp; reverse factoring</div></div>
+      <div class="mark">AR</div>
+      <div><h1>AR Aging Analysis</h1><div class="sub">Accounts receivable aging &amp; collections</div></div>
     </div>
     <nav class="tabs">
       <button class="active" data-view="dashboard">Dashboard</button>
-      <button data-view="exceptions">Exceptions</button>
+      <button data-view="exceptions">Collections Watchlist</button>
       <button data-view="ai">AI Extract</button>
       <button data-view="console">SQL Console</button>
     </nav>
@@ -30,6 +30,20 @@
 
   <!-- DASHBOARD -->
   <section class="view" id="view-dashboard">
+    <details class="howto">
+      <summary>How it works &amp; assumptions</summary>
+      <div class="howto-body">
+        <p><b>What this is.</b> A live accounts-receivable aging console over a synthetic invoice ledger. Every figure on this page is a real SQL query executed in your browser (SQLite compiled to WebAssembly) — nothing is hard-coded.</p>
+        <p><b>Tabs.</b> <b>Dashboard</b> — portfolio KPIs, trends and receivables aging. <b>Collections Watchlist</b> — rule-based risk flags on the live ledger. <b>AI Extract</b> — parse a pasted invoice and cross-check it against the ledger. <b>SQL Console</b> — run your own queries.</p>
+        <p><b>Data &amp; currency.</b> Deterministic synthetic data — 30 customers, 180 invoices, fixed seed. All amounts are shown in ILS (₪). Invoices issued in another currency are converted at fixed, illustrative rates: <b>USD&#8594;ILS 3.70</b>, <b>EUR&#8594;ILS 4.00</b> (as of 2026-07-15). A small currency tag marks any invoice converted from a non-ILS original.</p>
+        <p><b>Metric definitions.</b></p>
+        <ul>
+          <li><b>DSO (Days Sales Outstanding)</b> — average days an invoice stays open, from issue date to repayment (or to today if still unpaid).</li>
+          <li><b>Open exposure</b> — total outstanding advances on open invoices (status Financed or Overdue).</li>
+          <li><b>At-risk exposure</b> — the outstanding advance of the distinct invoices flagged on the Watchlist. It is a subset of Open exposure, and it differs from the sum of the per-rule "Rule impact" amounts because one invoice can trip several rules, where each impact is counted separately.</li>
+        </ul>
+      </div>
+    </details>
     <div class="kpi-row" id="kpis"></div>
 
     <div class="chart-grid">
@@ -45,7 +59,7 @@
 
     <div class="chart-grid second">
       <div class="card">
-        <div class="card-head"><h2>Top suppliers by financed volume</h2><span class="hint">ILS</span></div>
+        <div class="card-head"><h2>Top customers by financed volume</h2><span class="hint">ILS</span></div>
         <div class="chart-body"><canvas id="chSuppliers"></canvas></div>
       </div>
       <div class="card">
@@ -55,7 +69,7 @@
     </div>
 
     <div class="card tbl-wrap" style="margin-top:14px;">
-      <div class="card-head"><h2>Recent deals</h2><span class="hint">latest 10 by issue date</span></div>
+      <div class="card-head"><h2>Recent invoices</h2><span class="hint">latest 10 by issue date</span></div>
       <table class="data" id="recentTbl"></table>
     </div>
   </section>
@@ -65,7 +79,7 @@
     <div class="kpi-row exc-summary" id="excSummary"></div>
     <div class="card" style="margin-top:14px;">
       <div class="card-head">
-        <h2>Exception queue</h2>
+        <h2>Collections queue</h2>
         <span class="hint">7 rules · scanned live via SQL</span>
       </div>
       <div class="exc-filters" id="excFilters"></div>
@@ -84,7 +98,7 @@
         <div class="ai-left">
           <div class="sample-row">
             <span class="sample-lbl">Load sample:</span>
-            <button class="chip" data-sample="clean">New supplier</button>
+            <button class="chip" data-sample="clean">New customer</button>
             <button class="chip" data-sample="dup">Resubmitted invoice</button>
           </div>
           <textarea class="doc" id="doc" spellcheck="false" placeholder="Paste an invoice or deal document here…"></textarea>
@@ -126,7 +140,7 @@ FROM deals GROUP BY status ORDER BY financed_ils DESC;</textarea>
   </section>
 
   <div class="footnote">
-    Synthetic dataset · 30 suppliers · 180 deals · deterministic seed · figures illustrative (ILS).<br>
+    Synthetic dataset · 30 customers · 180 invoices · deterministic seed · figures in ILS (USD→3.70, EUR→4.00).<br>
     Portfolio build — real SQLite (sql.js / WebAssembly) client-side; every dashboard number is a live SQL query.
   </div>
 </div>

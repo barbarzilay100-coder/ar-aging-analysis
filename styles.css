@@ -33,10 +33,10 @@
   .view[hidden]{display:none;}
 
   /* KPI cards */
-  .kpi-row{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;}
-  .kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 15px;}
+  .kpi-row{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;}
+  .kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:13px 12px;}
   .kpi-card .label{font-size:10.5px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);font-weight:500;}
-  .kpi-card .val{font-family:var(--display);font-weight:600;font-size:22px;margin-top:6px;color:var(--ink);letter-spacing:-.5px;}
+  .kpi-card .val{font-family:var(--display);font-weight:600;font-size:19px;margin-top:6px;color:var(--ink);letter-spacing:-.4px;}
   .kpi-card .val small{font-size:13px;color:var(--faint);font-weight:500;}
   .kpi-card .meta{font-size:11px;margin-top:3px;color:var(--faint);}
   .kpi-card.alert .val{color:var(--danger);}
@@ -153,6 +153,19 @@
   @keyframes spin{to{transform:rotate(360deg);}}
   .loading-veil p{color:var(--muted);font-family:var(--mono);font-size:13px;}
   .footnote{margin-top:16px;color:var(--faint);font-size:11.5px;text-align:center;line-height:1.6;}
+
+  .ccy{display:inline-block;margin-left:5px;padding:0 5px;border-radius:4px;background:#EEF1F5;color:var(--muted);font-family:var(--mono);font-size:9.5px;font-weight:600;vertical-align:1px;}
+  details.howto{background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:14px;overflow:hidden;}
+  details.howto summary{cursor:pointer;list-style:none;padding:12px 16px;font-family:var(--display);font-weight:600;font-size:12.5px;color:var(--indigo);display:flex;align-items:center;gap:8px;user-select:none;}
+  details.howto summary::-webkit-details-marker{display:none;}
+  details.howto summary::before{content:'▸';color:var(--accent);font-size:11px;transition:transform .15s;}
+  details.howto[open] summary::before{transform:rotate(90deg);}
+  details.howto summary:hover{background:#F8FAFC;}
+  .howto-body{padding:4px 18px 16px;border-top:1px solid var(--border);font-size:12.5px;color:var(--muted);line-height:1.65;}
+  .howto-body p{margin:10px 0;}
+  .howto-body b{color:var(--ink);font-weight:600;}
+  .howto-body ul{margin:6px 0 0;padding-left:18px;}
+  .howto-body li{margin:5px 0;}
 
   @media(max-width:900px){
     .kpi-row{grid-template-columns:repeat(3,1fr);}
