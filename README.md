@@ -9,7 +9,7 @@ ledger.
 Built as a portfolio project to demonstrate SQL, data modelling, BI dashboards,
 exception handling, and applied AI on a realistic fintech operations problem.
 
-> **Live demo:** https://barbarzilay100-coder.github.io/deal-flow/
+> **Live demo:** https://barbarzilay100-coder.github.io/ar-aging-analysis/
 
 ---
 
@@ -42,7 +42,7 @@ fixed fallback if the rate service is unavailable).
 ## Project structure
 
 ```
-deal-flow/
+ar-aging-analysis/
 ├─ index.html        markup + external asset links
 ├─ styles.css        all styling
 ├─ app.js            data layer, dashboard, watchlist engine, AI, SQL console
@@ -95,7 +95,7 @@ git init
 git add .
 git commit -m "AR Aging Analysis — accounts receivable aging console"
 git branch -M main
-git remote add origin https://github.com/<you>/deal-flow.git
+git remote add origin https://github.com/<you>/ar-aging-analysis.git
 git push -u origin main
 ```
 
