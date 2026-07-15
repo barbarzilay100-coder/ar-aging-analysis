@@ -6,7 +6,7 @@ const ri=(min,max)=>Math.floor(rand()*(max-min+1))+min;
 const rf=(min,max)=>rand()*(max-min)+min;
 function pickW(items){const tot=items.reduce((s,i)=>s+i[1],0);let r=rand()*tot;for(const[v,w]of items){if(r<w)return v;r-=w;}return items[0][0];}
 const DAY=86400000, TODAY=new Date('2026-07-15');
-let FX={ILS:1,USD:3.70,EUR:4.00}; // ILS conversion rates — fallback defaults, overwritten by live rates on boot
+let FX={ILS:1,USD:3.00,EUR:3.45}; // ILS conversion rates — fallback defaults (approx current), overwritten by live rates on boot
 let FX_INFO={live:false,date:null,source:'fallback'};
 const fmtDate=d=>d.toISOString().slice(0,10);
 const addDays=(d,n)=>new Date(d.getTime()+n*DAY);
