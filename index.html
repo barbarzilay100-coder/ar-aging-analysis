@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deal Flow — Operations Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="loading-veil" id="veil"><div class="spinner"></div><p id="veil-msg">Booting SQLite engine…</p></div>
+
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="mark">DF</div>
+      <div><h1>Deal Flow — Operations Console</h1><div class="sub">Invoice financing &amp; reverse factoring</div></div>
+    </div>
+    <nav class="tabs">
+      <button class="active" data-view="dashboard">Dashboard</button>
+      <button data-view="exceptions">Exceptions</button>
+      <button data-view="ai">AI Extract</button>
+      <button data-view="console">SQL Console</button>
+    </nav>
+  </header>
+
+  <!-- DASHBOARD -->
+  <section class="view" id="view-dashboard">
+    <div class="kpi-row" id="kpis"></div>
+
+    <div class="chart-grid">
+      <div class="card">
+        <div class="card-head"><h2>Monthly financing volume</h2><span class="hint">advance, ILS</span></div>
+        <div class="chart-body"><canvas id="chVolume"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Deals by status</h2><span class="hint">count</span></div>
+        <div class="chart-body"><canvas id="chStatus"></canvas></div>
+      </div>
+    </div>
+
+    <div class="chart-grid second">
+      <div class="card">
+        <div class="card-head"><h2>Top suppliers by financed volume</h2><span class="hint">ILS</span></div>
+        <div class="chart-body"><canvas id="chSuppliers"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Open receivables — aging</h2><span class="hint">exposure, ILS</span></div>
+        <div class="chart-body"><canvas id="chAging"></canvas></div>
+      </div>
+    </div>
+
+    <div class="card tbl-wrap" style="margin-top:14px;">
+      <div class="card-head"><h2>Recent deals</h2><span class="hint">latest 10 by issue date</span></div>
+      <table class="data" id="recentTbl"></table>
+    </div>
+  </section>
+
+  <!-- EXCEPTIONS -->
+  <section class="view" id="view-exceptions" hidden>
+    <div class="kpi-row exc-summary" id="excSummary"></div>
+    <div class="card" style="margin-top:14px;">
+      <div class="card-head">
+        <h2>Exception queue</h2>
+        <span class="hint">7 rules · scanned live via SQL</span>
+      </div>
+      <div class="exc-filters" id="excFilters"></div>
+      <div class="tbl-wrap" style="margin-top:0;">
+        <table class="data" id="excTbl"></table>
+      </div>
+    </div>
+    <div class="rules-note" id="rulesNote"></div>
+  </section>
+
+  <!-- AI EXTRACT -->
+  <section class="view" id="view-ai" hidden>
+    <div class="ai-grid">
+      <div class="card">
+        <div class="card-head"><h2>Document intake</h2><span class="hint">paste invoice / deal text</span></div>
+        <div class="ai-left">
+          <div class="sample-row">
+            <span class="sample-lbl">Load sample:</span>
+            <button class="chip" data-sample="clean">New supplier</button>
+            <button class="chip" data-sample="dup">Resubmitted invoice</button>
+          </div>
+          <textarea class="doc" id="doc" spellcheck="false" placeholder="Paste an invoice or deal document here…"></textarea>
+          <input type="password" class="key-input" id="apiKey" placeholder="Anthropic API key (only needed when self-hosted — stored in memory, never saved)" autocomplete="off">
+          <button class="run ai-run" id="extract">Extract with AI</button>
+          <div class="ai-status" id="aiStatus"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Extraction &amp; cross-check</h2><span class="hint" id="aiMode">idle</span></div>
+        <div class="ai-right" id="aiResult">
+          <div class="empty-state">Load a sample or paste a document, then run extraction.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONSOLE -->
+  <section class="view" id="view-console" hidden>
+    <div class="console-grid">
+      <div class="card">
+        <div class="card-head"><h2>Schema</h2><span class="hint">click to query</span></div>
+        <div class="schema" id="schema"></div>
+      </div>
+      <div class="card qcard">
+        <div class="card-head"><h2>SQL Console</h2><span class="hint" id="rowcount">ready</span></div>
+        <div class="chips" id="chips"></div>
+        <div class="editor-wrap">
+          <textarea class="editor" id="editor" spellcheck="false">SELECT status, COUNT(*) AS deals, ROUND(SUM(advance_amount)) AS financed_ils
+FROM deals GROUP BY status ORDER BY financed_ils DESC;</textarea>
+        </div>
+        <div class="toolbar">
+          <button class="run" id="run">Run query <kbd>Ctrl ↵</kbd></button>
+          <span class="status" id="status">—</span>
+        </div>
+        <div class="results" id="results"><div class="empty-state">Run a query to see results.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="footnote">
+    Synthetic dataset · 30 suppliers · 180 deals · deterministic seed · figures illustrative (ILS).<br>
+    Portfolio build — real SQLite (sql.js / WebAssembly) client-side; every dashboard number is a live SQL query.
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
