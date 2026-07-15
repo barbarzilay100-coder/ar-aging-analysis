@@ -1,15 +1,15 @@
-# Deal Flow — Invoice Financing Operations Console
+# AR Aging Analysis — Accounts Receivable Aging & Collections Console
 
-A browser-based operations console for an invoice-financing / reverse-factoring
-desk. It runs a **real SQLite database in the browser** (via WebAssembly), drives
-every dashboard number from **live SQL**, flags operational risks with a
-**rule-based exception engine**, and uses an **LLM to read invoices** and
-cross-check them against the ledger.
+A browser-based accounts-receivable aging and collections console. It runs a
+**real SQLite database in the browser** (via WebAssembly), drives every dashboard
+number from **live SQL**, flags collection risks with a **rule-based watchlist
+engine**, and uses an **LLM to read invoices** and cross-check them against the
+ledger.
 
 Built as a portfolio project to demonstrate SQL, data modelling, BI dashboards,
 exception handling, and applied AI on a realistic fintech operations problem.
 
-> **Live demo:** _add your GitHub Pages URL here after deploying (see below)._
+> **Live demo:** https://barbarzilay100-coder.github.io/deal-flow/
 
 ---
 
@@ -17,9 +17,9 @@ exception handling, and applied AI on a realistic fintech operations problem.
 
 | Module | What it demonstrates |
 |---|---|
-| **Dashboard** | KPIs (financed volume, open exposure, overdue, repayment rate), monthly trend, status split, top suppliers, receivables aging — each one a live SQL query. |
-| **Exception engine** | 7 SQL rules that scan the ledger and flag duplicates, credit-limit breaches, advance mismatches, overdue receivables, high-risk exposure and stuck deals — with severity and value-at-risk. |
-| **AI Extract** | Paste an invoice → an LLM extracts structured fields → the app cross-checks them against the database (duplicate invoice, known/new supplier, remaining credit room, amount sanity, date integrity) and returns a risk summary. |
+| **Dashboard** | KPIs (financed volume, open exposure, overdue, DSO, avg advance rate, repayment rate), monthly trend, status split, top customers, receivables aging — each one a live SQL query. |
+| **Collections Watchlist** | 7 SQL rules that scan the ledger and flag duplicates, credit-limit breaches, advance mismatches, overdue receivables, high-risk exposure and stuck invoices — with severity and at-risk exposure. |
+| **AI Extract** | Paste an invoice → an LLM extracts structured fields → the app cross-checks them against the database (duplicate invoice, known/new customer, remaining credit room, amount sanity, date integrity) and returns a risk summary. |
 | **SQL Console** | A query editor over the live database with a schema browser and preset queries — the SQL behind the dashboard is fully inspectable. |
 
 ## Architecture
@@ -27,14 +27,17 @@ exception handling, and applied AI on a realistic fintech operations problem.
 ```
 Browser (single static page, no backend)
  ├─ sql.js (SQLite compiled to WebAssembly) ....... the data layer
- │    schema.sql  →  suppliers / deals / deal_events
+ │    schema.sql  →  customers / deals / deal_events
  ├─ Chart.js ...................................... dashboard visuals
- ├─ Exception engine .............................. queries.sql, section B
+ ├─ Collections watchlist ......................... queries.sql, section B
+ ├─ Live FX (open.er-api.com) ..................... USD/EUR → ILS on load
  └─ Anthropic Messages API ........................ invoice field extraction
 ```
 
-Everything is client-side: no server, no build step. The database is generated
-deterministically on load (fixed seed), so the numbers are stable across reloads.
+Everything is client-side: no server, no build step. The ledger is generated
+deterministically on load (fixed seed); non-ILS invoices are converted to ILS
+using the latest published exchange rate, fetched live when the page loads (with a
+fixed fallback if the rate service is unavailable).
 
 ## Project structure
 
@@ -42,10 +45,10 @@ deterministically on load (fixed seed), so the numbers are stable across reloads
 deal-flow/
 ├─ index.html        markup + external asset links
 ├─ styles.css        all styling
-├─ app.js            data layer, dashboard, exception engine, AI, SQL console
+├─ app.js            data layer, dashboard, watchlist engine, AI, SQL console
 ├─ sql/
 │  ├─ schema.sql     relational schema
-│  └─ queries.sql    analytics queries + exception rules
+│  └─ queries.sql    analytics queries + collection rules
 ├─ docs/             screenshots
 ├─ README.md
 └─ LICENSE
@@ -55,11 +58,11 @@ deal-flow/
 
 Three related tables (`sql/schema.sql`):
 
-- **suppliers** — approved counterparties, credit rating and limit.
-- **deals** — the core ledger: one row per invoice, its advance, fee, status and risk.
+- **customers** — tracked counterparties, credit rating and limit.
+- **deals** — the core ledger: one row per invoice, its advance, fee, status and risk (amounts normalised to ILS).
 - **deal_events** — lifecycle audit trail (created → submitted → reviewed → financed → repaid).
 
-## Exception rules
+## Collections rules
 
 All rules live in `sql/queries.sql` (section B). Summary:
 
@@ -67,11 +70,11 @@ All rules live in `sql/queries.sql` (section B). Summary:
 |---|---|---|
 | B1 | Duplicate invoice number | High |
 | B2 | Advance exceeds invoice value | High |
-| B3 | Supplier exposure over credit limit | High |
+| B3 | Customer exposure over credit limit | High |
 | B4 | Advance ≠ invoice × advance rate | Medium |
 | B5 | Overdue receivable | Medium |
-| B6 | High-risk deal financed (score ≥ 75) | Medium |
-| B7 | Deal stuck in pipeline > 10 days | Low |
+| B6 | High-risk invoice financed (score ≥ 75) | Medium |
+| B7 | Invoice stuck in pipeline > 10 days | Low |
 
 ## Run locally
 
@@ -90,14 +93,14 @@ Or open `index.html` directly in a browser.
 ```bash
 git init
 git add .
-git commit -m "Deal Flow — invoice financing operations console"
+git commit -m "AR Aging Analysis — accounts receivable aging console"
 git branch -M main
 git remote add origin https://github.com/<you>/deal-flow.git
 git push -u origin main
 ```
 
 Then in the repo: **Settings → Pages → Source: `main` / root**. The live URL
-appears within a minute — paste it at the top of this README.
+appears within a minute.
 
 ## AI extraction setup
 
@@ -113,13 +116,14 @@ appears within a minute — paste it at the top of this README.
 
 ## Tech stack
 
-`sql.js` (SQLite/WASM) · `Chart.js` · vanilla JS/HTML/CSS · Anthropic Messages API
+`sql.js` (SQLite/WASM) · `Chart.js` · vanilla JS/HTML/CSS · live FX (open.er-api.com) · Anthropic Messages API
 
 ## Notes on the data
 
-The dataset is **synthetic** — 30 suppliers and 180 deals generated from a fixed
-seed to model a realistic invoice-financing book (including deliberate data-quality
-issues for the exception engine to catch). No real customer data is used.
+The dataset is **synthetic** — 30 customers and 180 invoices generated from a fixed
+seed to model a realistic receivables book (including deliberate data-quality issues
+for the watchlist to catch). All figures are shown in ILS; non-ILS invoices are
+converted at the latest published FX rate. No real customer data is used.
 
 ## License
 
