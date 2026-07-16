@@ -12,6 +12,7 @@ exception handling, and applied AI on a realistic fintech operations problem.
 > **Live demo:** https://barbarzilay100-coder.github.io/ar-aging-analysis/
 
 **Author:** Bar Barzilay — finance student (Israel) ·
+[LinkedIn](https://www.linkedin.com/in/bar-barzilay-ba932235b) ·
 [GitHub](https://github.com/barbarzilay100-coder) ·
 [barbarzilay100@gmail.com](mailto:barbarzilay100@gmail.com)
 
