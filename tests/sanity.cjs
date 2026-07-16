@@ -88,6 +88,18 @@ check('advance mismatches planted', deals.some(function (d) {
 }));
 check('overdue deals planted', deals.some(function (d) { return d.status === 'Overdue'; }));
 
+/* ---- aging pivot: every open deal lands in exactly one bucket ---- */
+var openDeals = deals.filter(function (d) { return d.status === 'Financed' || d.status === 'Overdue'; });
+var bucketTotals = [0, 0, 0, 0, 0], openTotal = 0;
+openDeals.forEach(function (d) {
+  var days = (env.TODAY.getTime() - Date.parse(d.due_date)) / DAY;
+  var idx = days <= 0 ? 0 : days <= 30 ? 1 : days <= 60 ? 2 : days <= 90 ? 3 : 4;
+  bucketTotals[idx] += d.advance_amount;
+  openTotal += d.advance_amount;
+});
+check('aging buckets are exhaustive and sum to open exposure',
+  openDeals.length > 0 && Math.abs(bucketTotals.reduce(function (a, b) { return a + b; }, 0) - openTotal) < 0.01);
+
 /* ---- determinism (fixed seed → identical dataset on every run) ---- */
 var env2 = buildDataset(src);
 check('generator is deterministic', JSON.stringify(env.deals) === JSON.stringify(env2.deals) &&

@@ -107,6 +107,27 @@ FROM settled
 GROUP BY issue_month
 ORDER BY issue_month;
 
+-- A11. AR aging pivot — the classic aging report: one row per customer, open
+--      exposure split into Current / 1-30 / 31-60 / 61-90 / 90+ days overdue,
+--      built as a conditional-aggregation (SUM CASE) pivot.
+SELECT c.customer_name,
+       ROUND(SUM(CASE WHEN julianday(date('now')) - julianday(d.due_date) <= 0
+                      THEN d.advance_amount ELSE 0 END)) AS current_ils,
+       ROUND(SUM(CASE WHEN julianday(date('now')) - julianday(d.due_date) BETWEEN 1 AND 30
+                      THEN d.advance_amount ELSE 0 END)) AS overdue_1_30,
+       ROUND(SUM(CASE WHEN julianday(date('now')) - julianday(d.due_date) BETWEEN 31 AND 60
+                      THEN d.advance_amount ELSE 0 END)) AS overdue_31_60,
+       ROUND(SUM(CASE WHEN julianday(date('now')) - julianday(d.due_date) BETWEEN 61 AND 90
+                      THEN d.advance_amount ELSE 0 END)) AS overdue_61_90,
+       ROUND(SUM(CASE WHEN julianday(date('now')) - julianday(d.due_date) > 90
+                      THEN d.advance_amount ELSE 0 END)) AS overdue_90_plus,
+       ROUND(SUM(d.advance_amount)) AS total_ils
+FROM deals d
+JOIN customers c ON c.customer_id = d.customer_id
+WHERE d.status IN ('Financed', 'Overdue')
+GROUP BY d.customer_id
+ORDER BY total_ils DESC;
+
 -- =====================================================================
 -- B. COLLECTIONS WATCHLIST  (each rule is one query; the app flags every hit)
 -- =====================================================================

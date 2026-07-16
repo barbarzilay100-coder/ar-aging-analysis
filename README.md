@@ -25,7 +25,7 @@ exception handling, and applied AI on a realistic fintech operations problem.
 
 | Module | What it demonstrates |
 |---|---|
-| **Dashboard** | KPIs (financed volume, open exposure, overdue, period DSO, avg days to collect, avg advance rate, repayment rate), monthly trend, status split, top customers, receivables aging — each one a live SQL query. |
+| **Dashboard** | KPIs (financed volume, open exposure, overdue, period DSO, avg days to collect, avg advance rate, repayment rate), monthly trend, status split, top customers, receivables aging, and the classic **AR aging pivot** — customer × bucket (Current / 1–30 / 31–60 / 61–90 / 90+), sortable, with drill-down to invoices. Each one a live SQL query. |
 | **Collections Watchlist** | 7 SQL rules that scan the ledger and flag duplicates, credit-limit breaches, advance mismatches, overdue receivables, high-risk exposure and stuck invoices — with severity and at-risk exposure. |
 | **AI Extract** | Paste an invoice → an LLM extracts structured fields → the app cross-checks them against the database (duplicate invoice, known/new customer, remaining credit room, amount sanity, date integrity) and returns a risk summary. |
 | **SQL Console** | A query editor over the live database with a schema browser and preset queries — the SQL behind the dashboard is fully inspectable. |

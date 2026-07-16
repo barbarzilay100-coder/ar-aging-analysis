@@ -83,6 +83,7 @@ const PRESETS=[
   ["Monthly trend",`SELECT substr(financed_date,1,7) AS month, COUNT(*) AS deals,\n       ROUND(SUM(advance_amount)) AS financed_ils\nFROM deals WHERE financed_date IS NOT NULL\nGROUP BY month ORDER BY month;`],
   ["Avg fee by type",`SELECT deal_type, COUNT(*) AS deals, ROUND(AVG(fee_amount)) AS avg_fee_ils,\n       ROUND(AVG(advance_rate),3) AS avg_advance_rate\nFROM deals GROUP BY deal_type;`],
   ["Risk buckets",`SELECT CASE WHEN risk_score<35 THEN 'Low' WHEN risk_score<65 THEN 'Medium' ELSE 'High' END AS band,\n       COUNT(*) AS deals, ROUND(SUM(advance_amount)) AS exposure_ils\nFROM deals GROUP BY band ORDER BY exposure_ils DESC;`],
+  ["Aging pivot: customer × bucket",`SELECT c.customer_name,\n       ROUND(SUM(CASE WHEN julianday(date('now'))-julianday(d.due_date)<=0 THEN d.advance_amount ELSE 0 END)) AS current_ils,\n       ROUND(SUM(CASE WHEN julianday(date('now'))-julianday(d.due_date) BETWEEN 1 AND 30 THEN d.advance_amount ELSE 0 END)) AS overdue_1_30,\n       ROUND(SUM(CASE WHEN julianday(date('now'))-julianday(d.due_date) BETWEEN 31 AND 60 THEN d.advance_amount ELSE 0 END)) AS overdue_31_60,\n       ROUND(SUM(CASE WHEN julianday(date('now'))-julianday(d.due_date) BETWEEN 61 AND 90 THEN d.advance_amount ELSE 0 END)) AS overdue_61_90,\n       ROUND(SUM(CASE WHEN julianday(date('now'))-julianday(d.due_date)>90 THEN d.advance_amount ELSE 0 END)) AS overdue_90_plus,\n       ROUND(SUM(d.advance_amount)) AS total_ils\nFROM deals d JOIN customers c ON c.customer_id=d.customer_id\nWHERE d.status IN ('Financed','Overdue')\nGROUP BY d.customer_id\nORDER BY total_ils DESC;`],
   ["Running exposure (window)",`SELECT c.customer_name, d.issue_date, ROUND(d.advance_amount) AS advance_ils,\n       ROUND(SUM(d.advance_amount) OVER (PARTITION BY d.customer_id\n             ORDER BY d.issue_date, d.deal_id)) AS running_exposure_ils\nFROM deals d JOIN customers c ON c.customer_id=d.customer_id\nWHERE d.status IN ('Financed','Overdue')\nORDER BY c.customer_name, d.issue_date;`],
   ["Overdue ranked (window)",`SELECT RANK() OVER (ORDER BY d.advance_amount DESC) AS rank,\n       d.invoice_number, c.customer_name, d.due_date,\n       CAST(julianday('now')-julianday(d.due_date) AS INT) AS days_overdue,\n       ROUND(d.advance_amount) AS advance_ils\nFROM deals d JOIN customers c ON c.customer_id=d.customer_id\nWHERE d.status='Overdue' ORDER BY rank;`],
   ["Repayment cohorts (CTE)",`WITH settled AS (\n  SELECT substr(issue_date,1,7) AS issue_month,\n         CASE WHEN status='Repaid' THEN 1 ELSE 0 END AS repaid\n  FROM deals WHERE status IN ('Repaid','Overdue')\n)\nSELECT issue_month, COUNT(*) AS settled_invoices, SUM(repaid) AS repaid_invoices,\n       ROUND(AVG(repaid)*100) AS repayment_rate_pct\nFROM settled GROUP BY issue_month ORDER BY issue_month;`]
@@ -117,7 +118,7 @@ function renderFxNote(){
     generateData();
     const SQL=await initSqlJs({locateFile:f=>`https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${f}`});
     db=new SQL.Database(); buildTables();
-    renderKpis(); renderCharts(); renderRecent();
+    renderKpis(); renderCharts(); renderAgingPivot(); renderRecent();
     buildExceptions(); renderExceptions();
     setupAI();
     renderSchema(); renderChips(); runQuery($('editor').value);
@@ -201,6 +202,62 @@ function baseOpts({money=false,horizontal=false}={}){
     plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>(money?'₪':'')+Number(c.parsed[horizontal?'x':'y']).toLocaleString('en-US')}}},
     scales:{x:{grid:{display:horizontal},ticks:{callback:function(v){return horizontal?'₪'+(v/1000)+'K':this.getLabelForValue(v);}}},
             y:{grid:{color:'#EEF1F5'},ticks:{callback:v=>horizontal?undefined:(money?'₪'+(v/1000)+'K':v)}}}};
+}
+
+/* ---------- AR aging pivot (customer × bucket) ---------- */
+const AGING_BUCKETS=[['current_ils','Current'],['b1_30','1–30'],['b31_60','31–60'],['b61_90','61–90'],['b90_plus','90+ overdue']];
+let agingRows=null, agingSort={col:'total_ils',dir:-1}, agingOpen=new Set();
+function agingPivotSql(dateExpr){
+  const D=`julianday(${dateExpr})-julianday(d.due_date)`;
+  return `SELECT d.customer_id, c.customer_name,
+       ROUND(SUM(CASE WHEN ${D}<=0 THEN d.advance_amount ELSE 0 END)) AS current_ils,
+       ROUND(SUM(CASE WHEN ${D} BETWEEN 1 AND 30 THEN d.advance_amount ELSE 0 END)) AS b1_30,
+       ROUND(SUM(CASE WHEN ${D} BETWEEN 31 AND 60 THEN d.advance_amount ELSE 0 END)) AS b31_60,
+       ROUND(SUM(CASE WHEN ${D} BETWEEN 61 AND 90 THEN d.advance_amount ELSE 0 END)) AS b61_90,
+       ROUND(SUM(CASE WHEN ${D}>90 THEN d.advance_amount ELSE 0 END)) AS b90_plus,
+       ROUND(SUM(d.advance_amount)) AS total_ils
+FROM deals d JOIN customers c ON c.customer_id=d.customer_id
+WHERE d.status IN ('Financed','Overdue')
+GROUP BY d.customer_id`;
+}
+function renderAgingPivot(){
+  if(!agingRows) agingRows=rows(agingPivotSql(`'${fmtDate(TODAY)}'`));
+  const s=agingSort;
+  const list=[...agingRows].sort((a,b)=>s.col==='customer_name'
+    ? s.dir*String(a.customer_name).localeCompare(b.customer_name)
+    : s.dir*((a[s.col]||0)-(b[s.col]||0)));
+  const cols=[['customer_name','Customer'],...AGING_BUCKETS,['total_ils','Total']];
+  const arrow=c=>s.col===c?`<span class="arr">${s.dir<0?'▼':'▲'}</span>`:'';
+  const cell=v=>`<td class="num">${v?'₪'+money(v):'<span class="zero">—</span>'}</td>`;
+  let h='<thead><tr>'+cols.map(([k,lbl])=>`<th class="sortable${k==='customer_name'?'':' num'}" data-col="${k}">${lbl}${arrow(k)}</th>`).join('')+'</tr></thead><tbody>';
+  list.forEach(r=>{
+    h+=`<tr class="pivot-row" data-cid="${r.customer_id}"><td>${r.customer_name}</td>`+
+      AGING_BUCKETS.map(([k])=>cell(r[k])).join('')+`<td class="num"><b>₪${money(r.total_ils)}</b></td></tr>`;
+    if(agingOpen.has(r.customer_id)){
+      qAll("SELECT invoice_number, due_date, advance_amount FROM deals WHERE customer_id=? AND status IN ('Financed','Overdue') ORDER BY due_date",[r.customer_id]).forEach(inv=>{
+        const days=Math.round((TODAY-new Date(inv.due_date))/DAY);
+        const idx=days<=0?0:days<=30?1:days<=60?2:days<=90?3:4; // must match the SQL buckets above
+        const amt=Math.round(inv.advance_amount);
+        h+=`<tr class="drill"><td class="mono">↳ ${inv.invoice_number} · due ${inv.due_date}${days>0?` · ${days}d overdue`:''}</td>`+
+          AGING_BUCKETS.map((_,i)=>i===idx?`<td class="num">₪${money(amt)}</td>`:'<td class="num"><span class="zero">—</span></td>').join('')+
+          `<td class="num">₪${money(amt)}</td></tr>`;
+      });
+    }
+  });
+  const tot=k=>agingRows.reduce((acc,r)=>acc+(r[k]||0),0);
+  h+=`<tr class="total-row"><td>Total · ${agingRows.length} customers</td>`+
+    AGING_BUCKETS.map(([k])=>`<td class="num">₪${money(tot(k))}</td>`).join('')+`<td class="num">₪${money(tot('total_ils'))}</td></tr></tbody>`;
+  const el=$('agingTbl'); el.innerHTML=h;
+  el.querySelectorAll('th.sortable').forEach(th=>th.onclick=()=>{
+    const c=th.dataset.col;
+    if(agingSort.col===c) agingSort.dir*=-1; else agingSort={col:c,dir:c==='customer_name'?1:-1};
+    renderAgingPivot();
+  });
+  el.querySelectorAll('tr.pivot-row').forEach(tr=>tr.onclick=()=>{
+    const id=Number(tr.dataset.cid);
+    if(agingOpen.has(id))agingOpen.delete(id);else agingOpen.add(id);
+    renderAgingPivot();
+  });
 }
 
 /* ---------- recent table ---------- */
