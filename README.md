@@ -122,8 +122,11 @@ appears within a minute.
 
 The dataset is **synthetic** — 30 customers and 180 invoices generated from a fixed
 seed to model a realistic receivables book (including deliberate data-quality issues
-for the watchlist to catch). All figures are shown in ILS; non-ILS invoices are
-converted at the latest published FX rate. No real customer data is used.
+for the watchlist to catch). All dates are generated **relative to today**, so the
+ledger always looks current. The structure of the book is deterministic (same seed,
+same customers/invoices/statuses); ILS amounts of non-ILS invoices are converted at
+the latest published FX rate, so those figures move slightly with the market. No real
+customer data is used.
 
 ## License
 

@@ -5,7 +5,7 @@ const pick=a=>a[Math.floor(rand()*a.length)];
 const ri=(min,max)=>Math.floor(rand()*(max-min+1))+min;
 const rf=(min,max)=>rand()*(max-min)+min;
 function pickW(items){const tot=items.reduce((s,i)=>s+i[1],0);let r=rand()*tot;for(const[v,w]of items){if(r<w)return v;r-=w;}return items[0][0];}
-const DAY=86400000, TODAY=new Date('2026-07-15');
+const DAY=86400000, TODAY=new Date(new Date().toISOString().slice(0,10)); // today (UTC midnight) — all synthetic dates are generated relative to it, so the demo never goes stale
 let FX={ILS:1,USD:3.00,EUR:3.45}; // ILS conversion rates — fallback defaults (approx current), overwritten by live rates on boot
 let FX_INFO={live:false,date:null,source:'fallback'};
 const fmtDate=d=>d.toISOString().slice(0,10);
@@ -24,7 +24,7 @@ function generateData(){
   let name; do{name=`${pick(geo)} ${pick(suf)} Ltd`;}while(usedNames.has(name)); usedNames.add(name);
   const rating=pickW([["A",25],["B",40],["C",25],["D",10]]);
   const limitBase={A:2500000,B:1500000,C:800000,D:400000}[rating];
-  customers.push({customer_id:i,customer_name:name,industry:pick(industries),onboarded_date:fmtDate(addDays(new Date('2023-06-01'),ri(0,900))),credit_rating:rating,credit_limit:Math.round(limitBase*rf(0.7,1.3)/10000)*10000});
+  customers.push({customer_id:i,customer_name:name,industry:pick(industries),onboarded_date:fmtDate(addDays(TODAY,ri(0,900)-1140)),credit_rating:rating,credit_limit:Math.round(limitBase*rf(0.7,1.3)/10000)*10000});
 }
 
   let evId=1; const invSeen={};
@@ -33,7 +33,7 @@ function generateData(){
   let invAmt=Math.round(Math.exp(rf(9.6,13.4))/100)*100;
   const currency=pickW([["ILS",84],["USD",11],["EUR",5]]);
   invAmt=Math.round(invAmt*FX[currency]/100)*100; // normalise every invoice to ILS
-  const issue=addDays(new Date('2025-01-01'),ri(0,560));
+  const issue=addDays(TODAY,ri(0,560)-560);
   const termsDays=pickW([[30,45],[60,40],[90,15]]);
   let due=addDays(issue,termsDays);
   const rate=pickW([[0.80,20],[0.85,30],[0.90,35],[0.95,15]]);
@@ -145,7 +145,7 @@ function renderKpis(){
   const odCnt=one("SELECT COUNT(*) FROM deals WHERE status='Overdue'");
   const avgRate=one("SELECT ROUND(AVG(advance_rate)*100,1) FROM deals");
   const avgDays=one("SELECT ROUND(AVG(julianday(financed_date)-julianday(issue_date)),1) FROM deals WHERE financed_date IS NOT NULL");
-  const dso=one("SELECT ROUND(AVG(julianday(COALESCE(repaid_date,'2026-07-15'))-julianday(issue_date))) FROM deals WHERE status IN ('Financed','Overdue','Repaid')");
+  const dso=one(`SELECT ROUND(AVG(julianday(COALESCE(repaid_date,'${fmtDate(TODAY)}'))-julianday(issue_date))) FROM deals WHERE status IN ('Financed','Overdue','Repaid')`);
   const repaidCnt=one("SELECT COUNT(*) FROM deals WHERE status='Repaid'");
   const settled=repaidCnt+odCnt;
   const repayRate=settled?Math.round(repaidCnt/settled*100):0;
@@ -283,7 +283,7 @@ const RULES=[
    sql:`SELECT deal_id, invoice_number, customer_id, advance_amount AS amt, issue_date AS dt, status
         FROM deals
         WHERE status IN ('Initiated','Under Review','Approved')
-          AND julianday('2026-07-15')-julianday(issue_date) > 10 ORDER BY issue_date`,
+          AND julianday('now')-julianday(issue_date) > 10 ORDER BY issue_date`,
    detail:r=>`Still "${r.status}" ${Math.round((TODAY-new Date(r.dt))/DAY)} days after issue — pipeline is stuck.`,
    risk:r=>0}
 ];
@@ -333,6 +333,9 @@ function renderExceptions(){
 }
 
 /* ---------- AI extraction layer ---------- */
+// HTML-escape anything that came from the pasted document or the model —
+// extracted fields are untrusted input and must never reach innerHTML raw.
+const esc=s=>s==null?s:String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function qAll(sql,params){const st=db.prepare(sql);if(params)st.bind(params);const out=[];while(st.step())out.push(st.getAsObject());st.free();return out;}
 function q1(sql,params){const r=qAll(sql,params);return r.length?r[0]:null;}
 
@@ -358,14 +361,15 @@ Total due:                      ${d.cur} ${Number(d.amt).toLocaleString('en-US')
 
 Please remit to account ending 8842.
 Financing requested against this invoice.`;
+  const cIss=addDays(TODAY,-7), cDue=addDays(cIss,60);
   SAMPLES.clean=
 `INVOICE
 
 Supplier:  Tabor Freight Solutions Ltd
 Customer:  Northgate Retail
-Invoice #: INV-2026-9042
-Issued:    2026-07-08
-Due:       2026-09-06  (Net 60)
+Invoice #: INV-${cIss.getFullYear()}-9042
+Issued:    ${fmtDate(cIss)}
+Due:       ${fmtDate(cDue)}  (Net 60)
 
 Line items:
   1. Container haulage, Ashdod → Modiin      ILS 84,000
@@ -401,7 +405,7 @@ ${text}
   if(key){headers["x-api-key"]=key;headers["anthropic-version"]="2023-06-01";headers["anthropic-dangerous-direct-browser-access"]="true";}
   const res=await fetch("https://api.anthropic.com/v1/messages",{
     method:"POST",headers,
-    body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,
+    body:JSON.stringify({model:"claude-sonnet-5",max_tokens:1000,
       system:"You are a precise financial document extraction engine. Output only valid JSON.",
       messages:[{role:"user",content:prompt}]})
   });
@@ -443,8 +447,8 @@ function crossCheck(x){
   // duplicate invoice
   if(x.invoice_number){
     const dup=q1("SELECT COUNT(*) c FROM deals WHERE invoice_number=?",[x.invoice_number]);
-    if(dup&&dup.c>0) checks.push({s:'flag',t:'Duplicate invoice number',d:`${x.invoice_number} already exists on ${dup.c} deal(s) in the ledger — possible double-financing.`});
-    else checks.push({s:'ok',t:'Invoice number is new',d:`${x.invoice_number} not found in the ledger.`});
+    if(dup&&dup.c>0) checks.push({s:'flag',t:'Duplicate invoice number',d:`${esc(x.invoice_number)} already exists on ${dup.c} deal(s) in the ledger — possible double-financing.`});
+    else checks.push({s:'ok',t:'Invoice number is new',d:`${esc(x.invoice_number)} not found in the ledger.`});
   } else checks.push({s:'warn',t:'No invoice number',d:'Could not read an invoice number from the document.'});
   // supplier match
   if(x.customer_name){
@@ -458,7 +462,7 @@ function crossCheck(x){
         if(adv>room) checks.push({s:'flag',t:'Would breach credit limit',d:`A 90% advance (₪${money(adv)}) exceeds remaining room (₪${money(room)}).`});
         else checks.push({s:'ok',t:'Within credit limit',d:`90% advance ≈ ₪${money(adv)}; remaining room ₪${money(room)}.`});
       }
-    } else checks.push({s:'warn',t:'New customer',d:`"${x.customer_name}" is not onboarded — KYC / credit setup required before financing.`});
+    } else checks.push({s:'warn',t:'New customer',d:`"${esc(x.customer_name)}" is not onboarded — KYC / credit setup required before financing.`});
   }
   // amount sanity
   if(x.invoice_amount){
@@ -476,12 +480,12 @@ function crossCheck(x){
 
 function renderExtraction(x,mode){
   const money=n=>Number(n).toLocaleString('en-US');
-  const F=(k,v,fmt)=>`<div class="field"><div class="fk">${k}</div><div class="fv ${v==null?'null':''}">${v==null?'—':(fmt?fmt(v):v)}</div></div>`;
+  const F=(k,v,fmt)=>`<div class="field"><div class="fk">${k}</div><div class="fv ${v==null?'null':''}">${v==null?'—':(fmt?fmt(v):esc(v))}</div></div>`;
   const fields=`<div class="ex-section-title">Extracted fields</div><div class="field-grid">`+
     F('Invoice #',x.invoice_number)+
     F('Customer',x.customer_name)+
     F('Bill-to',x.bill_to)+
-    F('Amount',x.invoice_amount,v=>(x.currency?x.currency+' ':'₪')+money(v))+
+    F('Amount',x.invoice_amount,v=>(x.currency?esc(x.currency)+' ':'₪')+money(v))+
     F('Currency',x.currency)+
     F('Payment terms',x.payment_terms)+
     F('Issue date',x.issue_date)+
@@ -490,8 +494,8 @@ function renderExtraction(x,mode){
   const checks=crossCheck(x);
   const checksHtml=`<div class="ex-section-title">Ledger cross-check</div>`+
     checks.map(c=>`<div class="check ${c.s}"><span class="ico">${c.s==='ok'?'✓':c.s==='warn'?'!':'✕'}</span><span class="ctext"><b>${c.t}</b><span>${c.d}</span></span></div>`).join('');
-  const notes=(x.notes&&x.notes.length)?`<div class="ex-section-title">Analyst notes (AI)</div>`+x.notes.map(n=>`<div class="check warn"><span class="ico">!</span><span class="ctext"><span>${n}</span></span></div>`).join(''):'';
-  const risk=x.risk_summary?`<div class="risk-box"><div class="rl">AI risk summary</div>${x.risk_summary}</div>`:'';
+  const notes=(x.notes&&x.notes.length)?`<div class="ex-section-title">Analyst notes (AI)</div>`+x.notes.map(n=>`<div class="check warn"><span class="ico">!</span><span class="ctext"><span>${esc(n)}</span></span></div>`).join(''):'';
+  const risk=x.risk_summary?`<div class="risk-box"><div class="rl">AI risk summary</div>${esc(x.risk_summary)}</div>`:'';
   $('aiResult').innerHTML=fields+checksHtml+notes+risk;
   $('aiMode').textContent=mode;
 }
@@ -512,8 +516,11 @@ function setupAI(){
     }catch(err){
       const x=extractHeuristic(text);
       renderExtraction(x,'offline heuristic');
-      $('aiStatus').className='ai-status err';
-      $('aiStatus').textContent='AI service unreachable — showing offline heuristic extraction. (Full AI works inside Claude, or with your own API key if self-hosted.)';
+      const hasKey=!!($('apiKey')?.value||'').trim();
+      $('aiStatus').className='ai-status'+(hasKey?' err':'');
+      $('aiStatus').textContent=hasKey
+        ?'AI service unreachable — showing offline heuristic extraction. Check the API key and try again.'
+        :'No API key — showing offline heuristic extraction. Paste an Anthropic API key above for full AI extraction (inside the Claude runtime it works without one).';
     }finally{$('extract').disabled=false;}
   };
 }
