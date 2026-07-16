@@ -128,6 +128,20 @@ WHERE d.status IN ('Financed', 'Overdue')
 GROUP BY d.customer_id
 ORDER BY total_ils DESC;
 
+-- A12. Open exposure by buyer (bill_to). In reverse factoring the payer is the
+--      buyer, so payment risk concentrates on bill_to; limits in this demo still
+--      track the supplier because the book is modelled as recourse (supplier
+--      risk retained). This view shows the payer-side concentration.
+SELECT bill_to AS buyer,
+       COUNT(*) AS invoices,
+       ROUND(SUM(advance_amount)) AS open_exposure_ils,
+       ROUND(SUM(CASE WHEN deal_type = 'Reverse Factoring'
+                      THEN advance_amount ELSE 0 END)) AS reverse_factoring_ils
+FROM deals
+WHERE status IN ('Financed', 'Overdue')
+GROUP BY bill_to
+ORDER BY open_exposure_ils DESC;
+
 -- =====================================================================
 -- B. COLLECTIONS WATCHLIST  (each rule is one query; the app flags every hit)
 -- =====================================================================

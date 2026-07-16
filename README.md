@@ -25,7 +25,7 @@ exception handling, and applied AI on a realistic fintech operations problem.
 
 | Module | What it demonstrates |
 |---|---|
-| **Dashboard** | KPIs (financed volume, open exposure, overdue, period DSO, avg days to collect, avg advance rate, repayment rate), monthly trend, status split, top customers, receivables aging, and the classic **AR aging pivot** — customer × bucket (Current / 1–30 / 31–60 / 61–90 / 90+), sortable, with drill-down to invoices. Each one a live SQL query. |
+| **Dashboard** | KPIs (financed volume, open exposure, overdue, period DSO, avg days to collect, avg advance rate, repayment rate), monthly trend, status split, top customers, exposure by buyer, receivables aging, and the classic **AR aging pivot** — customer × bucket (Current / 1–30 / 31–60 / 61–90 / 90+), sortable, with drill-down to invoices. Each one a live SQL query. |
 | **Collections Watchlist** | 7 SQL rules that scan the ledger and flag duplicates, credit-limit breaches, advance mismatches, overdue receivables, high-risk exposure and stuck invoices — with severity and at-risk exposure. |
 | **AI Extract** | Paste an invoice → an LLM extracts structured fields → the app cross-checks them against the database (duplicate invoice, known/new customer, remaining credit room, amount sanity, date integrity) and returns a risk summary. |
 | **SQL Console** | A query editor over the live database with a schema browser and preset queries — the SQL behind the dashboard is fully inspectable. |
@@ -82,6 +82,14 @@ Three related tables (`sql/schema.sql`):
 - **customers** — tracked counterparties, credit rating and limit.
 - **deals** — the core ledger: one row per invoice, its advance, fee, status and risk (amounts normalised to ILS).
 - **deal_events** — lifecycle audit trail (created → submitted → reviewed → financed → repaid).
+
+**Credit-risk model.** About 70% of the book is reverse factoring, where the party
+that ultimately pays is the **buyer** (`bill_to`). Credit limits and exposure are
+still tracked against the **supplier** because the portfolio is modelled as a
+**recourse** book — if the buyer fails to pay, the advance is recoverable from the
+supplier, so supplier risk is retained. The dashboard's "Open exposure by buyer"
+chart shows the payer-side concentration that a non-recourse factor would manage
+instead.
 
 ## Collections rules
 

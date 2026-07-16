@@ -51,6 +51,7 @@
   .card-head .hint{font-size:11px;color:var(--faint);}
   .chart-body{padding:14px 16px;height:250px;position:relative;}
   .chart-body.short{height:210px;}
+  .chart-body.tall{height:330px;}
 
   /* recent table */
   .tbl-wrap{margin-top:14px;overflow:auto;}
