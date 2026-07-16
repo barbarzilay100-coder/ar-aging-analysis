@@ -5,10 +5,10 @@
 //   /System/Library/Frameworks/JavaScriptCore.framework/Versions/Current/Helpers/jsc \
 //     analysis/export_snapshot.js > analysis/data/ledger-snapshot.json
 //
-// Evaluates the data-generator section of app.js (everything above the boot
-// marker), calls generateData(), and prints {as_of, customers, deals, payments}.
+// Evaluates the data-generator section of assets/app.js (everything above the
+// boot marker), calls generateData(), and prints {as_of, customers, deals, payments}.
 // Amounts use the fallback FX rates, so the snapshot is fully deterministic.
-var src = readFile('app.js');
+var src = readFile('assets/app.js');
 var cut = src.indexOf('/* ---------- boot ---------- */');
 if (cut < 0) throw new Error('boot marker not found in app.js');
 var code = src.slice(0, cut) +

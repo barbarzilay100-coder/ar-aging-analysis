@@ -68,8 +68,9 @@ fixed fallback if the rate service is unavailable).
 ```
 ar-aging-analysis/
 ├─ index.html        markup + external asset links
-├─ styles.css        all styling
-├─ app.js            data layer, dashboard, watchlist engine, AI, SQL console
+├─ assets/
+│  ├─ styles.css     all styling
+│  └─ app.js         data layer, dashboard, watchlist engine, AI, SQL console
 ├─ sql/
 │  ├─ schema.sql     relational schema
 │  └─ queries.sql    analytics queries + collection rules

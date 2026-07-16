@@ -1,7 +1,7 @@
 /*
- * tests/sanity.cjs — sanity checks for the seeded data generator in app.js.
+ * tests/sanity.cjs — sanity checks for the seeded data generator in assets/app.js.
  *
- * Evaluates the generator section of app.js (everything above the
+ * Evaluates the generator section of assets/app.js (everything above the
  * "boot" marker) in a clean scope, calls generateData(), and asserts the
  * invariants every later change must keep green.
  *
@@ -21,9 +21,9 @@ var BOOT_MARKER = '/* ---------- boot ---------- */';
 function readAppSource() {
   if (IS_NODE) {
     var fs = require('fs'), path = require('path');
-    return fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+    return fs.readFileSync(path.join(__dirname, '..', 'assets', 'app.js'), 'utf8');
   }
-  return readFile('app.js'); // jsc: path is relative to the cwd
+  return readFile('assets/app.js'); // jsc: path is relative to the cwd
 }
 
 /* Evaluate the generator in a fresh scope and hand back its state. */
