@@ -51,7 +51,8 @@ function generateData(){
   let status,financed=null,repaid=null; const rejected=rand()<0.07;
   if(rejected){status="Rejected";}
   else if(ageDays<8){status=pickW([["Initiated",40],["Under Review",45],["Approved",15]]);}
-  else if(ageDays<16){status=pickW([["Under Review",25],["Approved",35],["Financed",40]]);}
+  else if(ageDays<16){status=pickW([["Under Review",25],["Approved",35],["Financed",40]]);
+    if(status==="Financed")financed=addDays(issue,2+risk%5);} // a Financed deal must carry a financing date; derived (not drawn) to keep the seeded RNG stream intact
   else if(ageDays<75 && rand()<0.05){status=pickW([["Under Review",55],["Approved",45]]);}
   else{financed=addDays(issue,ri(2,6));
     if(due<TODAY){status=pickW([["Repaid",88],["Overdue",12]]);if(status==="Repaid"){repaid=addDays(due,ri(-3,9));if(repaid>TODAY)repaid=TODAY;}} // a payment can never post after today
@@ -65,7 +66,7 @@ function generateData(){
   if(["Approved","Financed","Repaid","Overdue","Rejected"].includes(status))push("Reviewed",addDays(issue,ri(2,4)));
   if(status==="Rejected")push("Rejected",addDays(issue,ri(3,5)));
   if(["Approved","Financed","Repaid","Overdue"].includes(status))push("Approved",addDays(issue,ri(3,6)));
-  if(financed)push("Financed",financed);
+  if(financed){if(ageDays<16)events.push({event_id:evId++,deal_id:i,event_type:"Financed",event_date:fmtDate(financed),actor:"system"});else push("Financed",financed);} // young financings are system-posted (no RNG draw)
   if(repaid)push("Repaid",repaid);
   if(status==="Overdue")push("Flagged",addDays(due,ri(1,4)));
   }

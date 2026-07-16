@@ -78,6 +78,19 @@ check('all statuses are known', deals.every(function (d) { return STATUSES.has(d
 check('repaid_date set exactly on Repaid deals', deals.every(function (d) {
   return (d.status === 'Repaid') === (d.repaid_date != null);
 }));
+check('every Financed/Repaid/Overdue deal has a financed_date', deals.every(function (d) {
+  return ['Financed', 'Repaid', 'Overdue'].indexOf(d.status) < 0 || d.financed_date != null;
+}));
+check('financed_date sane (issue+2..6, never future)', deals.every(function (d) {
+  if (d.financed_date == null) return true;
+  var off = (Date.parse(d.financed_date) - Date.parse(d.issue_date)) / DAY;
+  return off >= 2 && off <= 6 && d.financed_date <= today;
+}));
+check('every financed deal has a Financed event', deals.every(function (d) {
+  return d.financed_date == null || events.some(function (e) {
+    return e.deal_id === d.deal_id && e.event_type === 'Financed';
+  });
+}));
 
 /* ---- planted anomalies (the exception engine must find these) ---- */
 var pairCount = {};

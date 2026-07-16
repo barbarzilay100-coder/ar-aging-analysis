@@ -119,6 +119,8 @@ def generate(as_of: date):
             status = pick_w([("Initiated", 40), ("Under Review", 45), ("Approved", 15)])
         elif age_days < 16:
             status = pick_w([("Under Review", 25), ("Approved", 35), ("Financed", 40)])
+            if status == "Financed":  # derived, not drawn — keeps the RNG stream intact
+                financed = add(issue, 2 + risk % 5)
         elif age_days < 75 and rand() < 0.05:
             status = pick_w([("Under Review", 55), ("Approved", 45)])
         else:
@@ -160,7 +162,12 @@ def generate(as_of: date):
         if status in ("Approved", "Financed", "Repaid", "Overdue"):
             push("Approved", add(issue, ri(3, 6)))
         if financed:
-            push("Financed", financed)
+            if age_days < 16:  # system-posted, no RNG draw (mirrors app.js)
+                events.append({"event_id": ev_id, "deal_id": i, "event_type": "Financed",
+                               "event_date": fmt(financed), "actor": "system"})
+                ev_id += 1
+            else:
+                push("Financed", financed)
         if repaid:
             push("Repaid", repaid)
         if status == "Overdue":
