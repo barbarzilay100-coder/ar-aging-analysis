@@ -145,7 +145,9 @@ function renderKpis(){
   const odCnt=one("SELECT COUNT(*) FROM deals WHERE status='Overdue'");
   const avgRate=one("SELECT ROUND(AVG(advance_rate)*100,1) FROM deals");
   const avgDays=one("SELECT ROUND(AVG(julianday(financed_date)-julianday(issue_date)),1) FROM deals WHERE financed_date IS NOT NULL");
-  const dso=one(`SELECT ROUND(AVG(julianday(COALESCE(repaid_date,'${fmtDate(TODAY)}'))-julianday(issue_date))) FROM deals WHERE status IN ('Financed','Overdue','Repaid')`);
+  const avgCollect=one(`SELECT ROUND(AVG(julianday(COALESCE(repaid_date,'${fmtDate(TODAY)}'))-julianday(issue_date))) FROM deals WHERE status IN ('Financed','Overdue','Repaid')`);
+  // standard simple-period DSO: gross open AR / trailing-90-day invoiced volume * 90
+  const dso=one(`SELECT ROUND((SELECT SUM(invoice_amount) FROM deals WHERE status IN ('Financed','Overdue'))*90.0/NULLIF((SELECT SUM(invoice_amount) FROM deals WHERE issue_date>=date('${fmtDate(TODAY)}','-90 day')),0))`);
   const repaidCnt=one("SELECT COUNT(*) FROM deals WHERE status='Repaid'");
   const settled=repaidCnt+odCnt;
   const repayRate=settled?Math.round(repaidCnt/settled*100):0;
@@ -155,7 +157,8 @@ function renderKpis(){
     {label:'Overdue',val:'₪'+money(odAmt),meta:odCnt+' invoices',cls:'alert'},
     {label:'Avg advance rate',val:avgRate+'<small>%</small>',cls:''},
     {label:'Avg days to finance',val:avgDays+'<small> d</small>',cls:''},
-    {label:'DSO',val:dso+'<small> d</small>',cls:''},
+    {label:'DSO (90-day)',val:dso+'<small> d</small>',meta:'AR ÷ 90d invoiced × 90',cls:''},
+    {label:'Avg days to collect',val:avgCollect+'<small> d</small>',cls:''},
     {label:'Repayment rate',val:repayRate+'<small>%</small>',cls:'good'},
   ];
   $('kpis').innerHTML=cards.map(c=>`<div class="kpi-card ${c.cls}"><div class="label">${c.label}</div><div class="val">${c.val}</div>${c.meta?`<div class="meta">${c.meta}</div>`:''}</div>`).join('');

@@ -38,7 +38,8 @@
         <p><b>Data &amp; currency.</b> Deterministic synthetic data — 30 customers, 180 invoices, fixed seed, dates generated relative to today so the book always looks current. All amounts are shown in ILS (₪). Invoices issued in another currency are converted to ILS using the latest published exchange rate, fetched live when the page loads (with a fixed fallback if the rate service is unavailable). A small currency tag marks any invoice converted from a non-ILS original.<br><span id="fxNote" class="fx-note">Loading live rates…</span></p>
         <p><b>Metric definitions.</b></p>
         <ul>
-          <li><b>DSO (Days Sales Outstanding)</b> — average days an invoice stays open, from issue date to repayment (or to today if still unpaid).</li>
+          <li><b>DSO (90-day)</b> — standard simple-period Days Sales Outstanding: gross open receivables (invoice value of unpaid financed invoices) &divide; total invoiced volume of the trailing 90 days &times; 90.</li>
+          <li><b>Avg days to collect</b> — average days an invoice stays open, from issue date to repayment (or to today if still unpaid). Unlike DSO this is a per-invoice average, unweighted by amount — the two answer different questions, so both are shown.</li>
           <li><b>Open exposure</b> — total outstanding advances on open invoices (status Financed or Overdue).</li>
           <li><b>At-risk exposure</b> — the outstanding advance of the distinct invoices flagged on the Watchlist. It is a subset of Open exposure, and it differs from the sum of the per-rule "Rule impact" amounts because one invoice can trip several rules, where each impact is counted separately.</li>
         </ul>

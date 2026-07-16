@@ -33,7 +33,7 @@
   .view[hidden]{display:none;}
 
   /* KPI cards */
-  .kpi-row{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;}
+  .kpi-row{display:grid;grid-template-columns:repeat(8,1fr);gap:10px;}
   .kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:13px 12px;}
   .kpi-card .label{font-size:10.5px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);font-weight:500;}
   .kpi-card .val{font-family:var(--display);font-weight:600;font-size:19px;margin-top:6px;color:var(--ink);letter-spacing:-.4px;}

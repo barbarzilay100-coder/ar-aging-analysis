@@ -43,12 +43,21 @@ SELECT deal_type,
 FROM deals
 GROUP BY deal_type;
 
--- A5. DSO — Days Sales Outstanding (avg days open: issue -> repayment, or today).
-SELECT ROUND(AVG(julianday(COALESCE(repaid_date, date('now'))) - julianday(issue_date))) AS dso_days
+-- A5. Average days to collect (per-invoice: issue -> repayment, or today if open).
+SELECT ROUND(AVG(julianday(COALESCE(repaid_date, date('now'))) - julianday(issue_date))) AS avg_days_to_collect
 FROM deals
 WHERE status IN ('Financed', 'Overdue', 'Repaid');
 
--- A6. Risk exposure buckets.
+-- A6. DSO, standard simple-period formula:
+--     gross open receivables / invoiced volume of the trailing 90 days * 90.
+SELECT ROUND(
+         (SELECT SUM(invoice_amount) FROM deals WHERE status IN ('Financed', 'Overdue'))
+         * 90.0
+         / NULLIF((SELECT SUM(invoice_amount) FROM deals
+                   WHERE issue_date >= date('now', '-90 day')), 0)
+       ) AS dso_90d;
+
+-- A7. Risk exposure buckets.
 SELECT CASE WHEN risk_score < 35 THEN 'Low'
             WHEN risk_score < 65 THEN 'Medium'
             ELSE 'High' END        AS risk_band,
