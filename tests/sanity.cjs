@@ -65,6 +65,12 @@ check('due date = issue date + payment terms', deals.every(function (d) {
 check('repaid_date never before issue_date', deals.every(function (d) {
   return d.repaid_date == null || d.repaid_date >= d.issue_date;
 }));
+check('no future repaid dates', deals.every(function (d) {
+  return d.repaid_date == null || d.repaid_date <= today;
+}));
+check('Repaid only assigned to deals already due', deals.every(function (d) {
+  return d.status !== 'Repaid' || d.due_date < today;
+}));
 
 /* ---- status consistency ---- */
 var STATUSES = new Set(['Initiated', 'Under Review', 'Approved', 'Financed', 'Repaid', 'Overdue', 'Rejected']);

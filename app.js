@@ -50,7 +50,7 @@ function generateData(){
   else if(ageDays<16){status=pickW([["Under Review",25],["Approved",35],["Financed",40]]);}
   else if(ageDays<75 && rand()<0.05){status=pickW([["Under Review",55],["Approved",45]]);}
   else{financed=addDays(issue,ri(2,6));
-    if(due<TODAY){status=pickW([["Repaid",88],["Overdue",12]]);if(status==="Repaid")repaid=addDays(due,ri(-3,9));}
+    if(due<TODAY){status=pickW([["Repaid",88],["Overdue",12]]);if(status==="Repaid"){repaid=addDays(due,ri(-3,9));if(repaid>TODAY)repaid=TODAY;}} // a payment can never post after today
     else{status="Financed";}}
   let invNo=`INV-${issue.getFullYear()}-${String(i).padStart(4,'0')}`;
   if(i%47===0){invNo=Object.keys(invSeen)[0]||invNo;} invSeen[invNo]=true;
