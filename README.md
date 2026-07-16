@@ -34,6 +34,7 @@ exception handling, and applied AI on a realistic fintech operations problem.
 
 | Skill | Where it shows up |
 |---|---|
+| **Excel** | Formula-driven aging workbook ([`docs/ar-aging-report.xlsx`](docs/ar-aging-report.xlsx)): `SUMIFS` pivot, named ranges, conditional formatting, tie-out check. |
 | **SQL** | Every dashboard number is a live SQLite query; the 7 watchlist rules and console presets are documented in [`sql/queries.sql`](sql/queries.sql). |
 | **Data modelling** | Relational 3-table ledger (`customers` / `deals` / `deal_events`) with a lifecycle audit trail. |
 | **BI dashboards** | KPI cards and trend / status / aging charts, all driven from the database — no hard-coded figures. |
@@ -70,7 +71,7 @@ ar-aging-analysis/
 │  └─ queries.sql    analytics queries + collection rules
 ├─ tests/
 │  └─ sanity.cjs     data-generator sanity checks
-├─ docs/             screenshots
+├─ docs/             screenshots + Excel aging report
 ├─ README.md
 └─ LICENSE
 ```
@@ -129,6 +130,16 @@ node tests/sanity.cjs
 
 (No Node? On macOS the same file runs under the built-in JavaScriptCore shell —
 see the header of the file.)
+
+## Excel deliverable
+
+[`docs/ar-aging-report.xlsx`](docs/ar-aging-report.xlsx) — the customer × bucket
+aging pivot as a formula-driven Excel workbook: an invoice-level data sheet plus a
+report sheet where every cell is a live `SUMIFS`, an editable `AsOfDate` named cell
+that re-ages the whole book, conditional formatting on the overdue buckets, and a
+tie-out check against the invoice sheet. It is a dated snapshot by design — the
+app's ledger regenerates relative to today, and an aging report is a point-in-time
+cut.
 
 ## Deploy (GitHub Pages)
 
