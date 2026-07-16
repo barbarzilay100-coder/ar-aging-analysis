@@ -45,6 +45,19 @@ CREATE TABLE deal_events (
     actor       TEXT                  -- system or analyst name
 );
 
+-- Cash receipts from payers, matched against invoices in the reconciliation
+-- module. deal_id is NULL when the remittance reference matches no invoice
+-- (unapplied cash).
+CREATE TABLE payments (
+    payment_id    INTEGER PRIMARY KEY,
+    deal_id       INTEGER REFERENCES deals(deal_id),  -- NULL = unapplied cash
+    payer         TEXT,              -- paying party (buyer / bill_to)
+    reference     TEXT,              -- invoice number as written on the remittance
+    amount        REAL,              -- ILS
+    received_date TEXT
+);
+
 CREATE INDEX idx_deals_customer ON deals(customer_id);
 CREATE INDEX idx_deals_status   ON deals(status);
 CREATE INDEX idx_events_deal    ON deal_events(deal_id);
+CREATE INDEX idx_payments_deal  ON payments(deal_id);

@@ -30,7 +30,7 @@ function readAppSource() {
 function buildDataset(src) {
   var cut = src.indexOf(BOOT_MARKER);
   if (cut < 0) throw new Error('boot marker not found in app.js — was it renamed?');
-  var code = src.slice(0, cut) + '\ngenerateData();\n({customers: customers, deals: deals, events: events, TODAY: TODAY, DAY: DAY, fmtDate: fmtDate});';
+  var code = src.slice(0, cut) + '\ngenerateData();\n({customers: customers, deals: deals, events: events, payments: payments, TODAY: TODAY, DAY: DAY, fmtDate: fmtDate});';
   if (IS_NODE) return require('vm').runInNewContext(code, {});
   return (0, eval)(code);
 }
@@ -43,7 +43,7 @@ function check(name, cond, detail) {
 
 var src = readAppSource();
 var env = buildDataset(src);
-var customers = env.customers, deals = env.deals, events = env.events;
+var customers = env.customers, deals = env.deals, events = env.events, payments = env.payments;
 var DAY = env.DAY, today = env.fmtDate(env.TODAY);
 
 /* ---- structure ---- */
@@ -88,6 +88,34 @@ check('advance mismatches planted', deals.some(function (d) {
 }));
 check('overdue deals planted', deals.some(function (d) { return d.status === 'Overdue'; }));
 
+/* ---- payments & reconciliation ---- */
+var dealById = {};
+deals.forEach(function (d) { dealById[d.deal_id] = d; });
+check('payments generated', payments.length > 0, 'got ' + payments.length);
+check('payment ids unique', new Set(payments.map(function (p) { return p.payment_id; })).size === payments.length);
+check('every applied payment references a known deal', payments.every(function (p) {
+  return p.deal_id == null || dealById[p.deal_id] != null;
+}));
+check('no future payment dates', payments.every(function (p) { return p.received_date <= today; }));
+check('no payment before its deal issue date', payments.every(function (p) {
+  return p.deal_id == null || p.received_date >= dealById[p.deal_id].issue_date;
+}));
+var paidByDeal = {};
+payments.forEach(function (p) { if (p.deal_id != null) paidByDeal[p.deal_id] = (paidByDeal[p.deal_id] || 0) + p.amount; });
+check('every Repaid deal fully paid (or deliberately over)', deals.every(function (d) {
+  return d.status !== 'Repaid' || (paidByDeal[d.deal_id] || 0) >= d.invoice_amount - 1;
+}));
+check('planted: split payment', deals.some(function (d) {
+  return d.status === 'Repaid' && payments.filter(function (p) { return p.deal_id === d.deal_id; }).length >= 2;
+}));
+check('planted: overpayment', deals.some(function (d) {
+  return (paidByDeal[d.deal_id] || 0) > d.invoice_amount + 1;
+}));
+check('planted: short-paid overdue', deals.some(function (d) {
+  return d.status === 'Overdue' && (paidByDeal[d.deal_id] || 0) > 0 && paidByDeal[d.deal_id] < d.invoice_amount - 1;
+}));
+check('planted: unapplied cash', payments.some(function (p) { return p.deal_id == null; }));
+
 /* ---- aging pivot: every open deal lands in exactly one bucket ---- */
 var openDeals = deals.filter(function (d) { return d.status === 'Financed' || d.status === 'Overdue'; });
 var bucketTotals = [0, 0, 0, 0, 0], openTotal = 0;
@@ -103,7 +131,8 @@ check('aging buckets are exhaustive and sum to open exposure',
 /* ---- determinism (fixed seed → identical dataset on every run) ---- */
 var env2 = buildDataset(src);
 check('generator is deterministic', JSON.stringify(env.deals) === JSON.stringify(env2.deals) &&
-  JSON.stringify(env.customers) === JSON.stringify(env2.customers));
+  JSON.stringify(env.customers) === JSON.stringify(env2.customers) &&
+  JSON.stringify(env.payments) === JSON.stringify(env2.payments));
 
 log('');
 if (failures.length) {

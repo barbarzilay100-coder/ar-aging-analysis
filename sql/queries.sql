@@ -198,3 +198,57 @@ FROM deals
 WHERE status IN ('Initiated', 'Under Review', 'Approved')
   AND julianday('now') - julianday(issue_date) > 10
 ORDER BY issue_date;
+
+-- =====================================================================
+-- C. PAYMENT RECONCILIATION  (cash receipts matched against invoices)
+-- =====================================================================
+
+-- C1. Match status per settled invoice (Repaid & Overdue book): one LEFT JOIN
+--     groups every receipt against its invoice. Matched = payments sum to the
+--     invoice amount (+-1 ILS rounding); Short-paid below; Overpaid above
+--     (includes duplicate remittances); Unpaid = overdue with no cash.
+SELECT d.deal_id,
+       d.invoice_number,
+       d.status,
+       ROUND(d.invoice_amount)                            AS invoice_ils,
+       ROUND(COALESCE(SUM(p.amount), 0))                  AS paid_ils,
+       ROUND(COALESCE(SUM(p.amount), 0) - d.invoice_amount) AS variance_ils,
+       COUNT(p.payment_id)                                AS payments,
+       CASE WHEN COUNT(p.payment_id) = 0                          THEN 'Unpaid'
+            WHEN ABS(SUM(p.amount) - d.invoice_amount) <= 1       THEN 'Matched'
+            WHEN SUM(p.amount) < d.invoice_amount                 THEN 'Short-paid'
+            ELSE 'Overpaid' END                            AS match_status
+FROM deals d
+LEFT JOIN payments p ON p.deal_id = d.deal_id
+WHERE d.status IN ('Repaid', 'Overdue')
+GROUP BY d.deal_id
+ORDER BY (match_status = 'Matched'),
+         ABS(COALESCE(SUM(p.amount), 0) - d.invoice_amount) DESC;
+
+-- C2. Unapplied cash, aged from receipt date — remittances whose reference
+--     matches no invoice in the ledger.
+SELECT payment_id,
+       reference,
+       payer,
+       ROUND(amount)                                              AS amount_ils,
+       received_date,
+       CAST(julianday(date('now')) - julianday(received_date) AS INT) AS days_unapplied,
+       CASE WHEN julianday(date('now')) - julianday(received_date) <= 30 THEN '0-30'
+            WHEN julianday(date('now')) - julianday(received_date) <= 60 THEN '31-60'
+            WHEN julianday(date('now')) - julianday(received_date) <= 90 THEN '61-90'
+            ELSE '90+' END                                         AS age_bucket
+FROM payments
+WHERE deal_id IS NULL
+ORDER BY days_unapplied DESC;
+
+-- C3. Exceptions only — invoices whose cash does not tie to the invoice amount.
+SELECT d.invoice_number,
+       d.status,
+       ROUND(d.invoice_amount)                              AS invoice_ils,
+       ROUND(SUM(p.amount))                                 AS paid_ils,
+       ROUND(SUM(p.amount) - d.invoice_amount)              AS variance_ils
+FROM deals d
+JOIN payments p ON p.deal_id = d.deal_id
+GROUP BY d.deal_id
+HAVING ABS(SUM(p.amount) - d.invoice_amount) > 1
+ORDER BY ABS(SUM(p.amount) - d.invoice_amount) DESC;

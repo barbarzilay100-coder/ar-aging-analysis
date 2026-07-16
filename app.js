@@ -17,7 +17,7 @@ const industries=["Construction","Food & Beverage","Logistics","Manufacturing","
 const buyers=["MegaMart Retail Group","FreshLine Foods","BuildCorp Holdings","MetroGrid Utilities","PharmaPlus Distribution","TechNova Systems","UrbanBuild","GreenField Agro","PrimeLogistics","Coastal Distribution","Northgate Retail","Solaris Energy","BlueHarbor Trading","Vertex Manufacturing","CityLine Markets"];
 const analysts=["system","R. Cohen","M. Levi","D. Azoulay","N. Friedman","T. Bar"];
 
-const customers=[], deals=[], events=[];
+const customers=[], deals=[], events=[], payments=[];
 function generateData(){
   const usedNames=new Set();
   for(let i=1;i<=30;i++){
@@ -69,12 +69,38 @@ function generateData(){
   if(repaid)push("Repaid",repaid);
   if(status==="Overdue")push("Flagged",addDays(due,ri(1,4)));
   }
+
+  /* payments — generated AFTER every deal/event draw, so the ledger above is
+     unchanged (append-only use of the seeded RNG stream) */
+  let payId=1;
+  const clampT=d=>d>TODAY?TODAY:d;
+  const addPay=(deal,amount,when,ref,payer)=>payments.push({payment_id:payId++,deal_id:deal?deal.deal_id:null,
+    payer:payer||(deal?deal.bill_to:pick(buyers)),reference:ref!==undefined?ref:(deal?deal.invoice_number:null),
+    amount:Math.round(amount),received_date:fmtDate(when)});
+  deals.forEach(d=>{
+    if(d.status==="Repaid"){
+      const repaid=new Date(d.repaid_date), r=rand();
+      if(r<0.72){addPay(d,d.invoice_amount,repaid);}
+      else if(r<0.90){const share=rf(0.40,0.65); // split remittance, two tranches
+        addPay(d,d.invoice_amount*share,addDays(repaid,-ri(4,15)));
+        addPay(d,d.invoice_amount*(1-share),repaid);}
+      else if(r<0.96){addPay(d,d.invoice_amount*rf(1.008,1.03),repaid);} // overpayment
+      else{addPay(d,d.invoice_amount,repaid);addPay(d,d.invoice_amount,clampT(addDays(repaid,ri(1,6))));} // duplicate payment
+    } else if(d.status==="Overdue"&&rand()<0.30){
+      addPay(d,d.invoice_amount*rf(0.30,0.70),clampT(addDays(new Date(d.due_date),ri(2,20)))); // short-pay
+    }
+  });
+  for(let k=0;k<4;k++){ // unapplied cash — remittances whose reference matches no invoice
+    const amt=Math.round(Math.exp(rf(9.8,12.0))/100)*100;
+    addPay(null,amt,addDays(TODAY,-ri(3,120)),`INV-${TODAY.getFullYear()}-${ri(9000,9899)}`);
+  }
 }
 
 const SCHEMA={
   customers:[["customer_id","INTEGER","pk"],["customer_name","TEXT"],["industry","TEXT"],["onboarded_date","DATE"],["credit_rating","TEXT"],["credit_limit","INTEGER"]],
   deals:[["deal_id","INTEGER","pk"],["invoice_number","TEXT"],["customer_id","INTEGER","fk"],["bill_to","TEXT"],["invoice_amount","REAL"],["currency","TEXT"],["issue_date","DATE"],["due_date","DATE"],["payment_terms","TEXT"],["advance_rate","REAL"],["advance_amount","REAL"],["fee_amount","REAL"],["deal_type","TEXT"],["status","TEXT"],["financed_date","DATE"],["repaid_date","DATE"],["risk_score","INTEGER"]],
-  deal_events:[["event_id","INTEGER","pk"],["deal_id","INTEGER","fk"],["event_type","TEXT"],["event_date","DATE"],["actor","TEXT"]]
+  deal_events:[["event_id","INTEGER","pk"],["deal_id","INTEGER","fk"],["event_type","TEXT"],["event_date","DATE"],["actor","TEXT"]],
+  payments:[["payment_id","INTEGER","pk"],["deal_id","INTEGER","fk"],["payer","TEXT"],["reference","TEXT"],["amount","REAL"],["received_date","DATE"]]
 };
 const PRESETS=[
   ["Financing by status",`SELECT status, COUNT(*) AS deals, ROUND(SUM(advance_amount)) AS financed_ils\nFROM deals GROUP BY status ORDER BY financed_ils DESC;`],
@@ -83,6 +109,7 @@ const PRESETS=[
   ["Monthly trend",`SELECT substr(financed_date,1,7) AS month, COUNT(*) AS deals,\n       ROUND(SUM(advance_amount)) AS financed_ils\nFROM deals WHERE financed_date IS NOT NULL\nGROUP BY month ORDER BY month;`],
   ["Avg fee by type",`SELECT deal_type, COUNT(*) AS deals, ROUND(AVG(fee_amount)) AS avg_fee_ils,\n       ROUND(AVG(advance_rate),3) AS avg_advance_rate\nFROM deals GROUP BY deal_type;`],
   ["Risk buckets",`SELECT CASE WHEN risk_score<35 THEN 'Low' WHEN risk_score<65 THEN 'Medium' ELSE 'High' END AS band,\n       COUNT(*) AS deals, ROUND(SUM(advance_amount)) AS exposure_ils\nFROM deals GROUP BY band ORDER BY exposure_ils DESC;`],
+  ["Payment reconciliation",`SELECT d.invoice_number, d.status, ROUND(d.invoice_amount) AS invoice_ils,\n       ROUND(COALESCE(SUM(p.amount),0)) AS paid_ils,\n       ROUND(COALESCE(SUM(p.amount),0)-d.invoice_amount) AS variance_ils,\n       CASE WHEN COUNT(p.payment_id)=0 THEN 'Unpaid'\n            WHEN ABS(SUM(p.amount)-d.invoice_amount)<=1 THEN 'Matched'\n            WHEN SUM(p.amount)<d.invoice_amount THEN 'Short-paid'\n            ELSE 'Overpaid' END AS match_status\nFROM deals d LEFT JOIN payments p ON p.deal_id=d.deal_id\nWHERE d.status IN ('Repaid','Overdue')\nGROUP BY d.deal_id\nORDER BY (match_status='Matched'), ABS(COALESCE(SUM(p.amount),0)-d.invoice_amount) DESC;`],
   ["Exposure by buyer",`SELECT bill_to AS buyer, COUNT(*) AS invoices,\n       ROUND(SUM(advance_amount)) AS open_exposure_ils,\n       ROUND(SUM(CASE WHEN deal_type='Reverse Factoring' THEN advance_amount ELSE 0 END)) AS reverse_factoring_ils\nFROM deals WHERE status IN ('Financed','Overdue')\nGROUP BY bill_to ORDER BY open_exposure_ils DESC;`],
   ["Aging pivot: customer × bucket",`SELECT c.customer_name,\n       ROUND(SUM(CASE WHEN julianday(date('now'))-julianday(d.due_date)<=0 THEN d.advance_amount ELSE 0 END)) AS current_ils,\n       ROUND(SUM(CASE WHEN julianday(date('now'))-julianday(d.due_date) BETWEEN 1 AND 30 THEN d.advance_amount ELSE 0 END)) AS overdue_1_30,\n       ROUND(SUM(CASE WHEN julianday(date('now'))-julianday(d.due_date) BETWEEN 31 AND 60 THEN d.advance_amount ELSE 0 END)) AS overdue_31_60,\n       ROUND(SUM(CASE WHEN julianday(date('now'))-julianday(d.due_date) BETWEEN 61 AND 90 THEN d.advance_amount ELSE 0 END)) AS overdue_61_90,\n       ROUND(SUM(CASE WHEN julianday(date('now'))-julianday(d.due_date)>90 THEN d.advance_amount ELSE 0 END)) AS overdue_90_plus,\n       ROUND(SUM(d.advance_amount)) AS total_ils\nFROM deals d JOIN customers c ON c.customer_id=d.customer_id\nWHERE d.status IN ('Financed','Overdue')\nGROUP BY d.customer_id\nORDER BY total_ils DESC;`],
   ["Running exposure (window)",`SELECT c.customer_name, d.issue_date, ROUND(d.advance_amount) AS advance_ils,\n       ROUND(SUM(d.advance_amount) OVER (PARTITION BY d.customer_id\n             ORDER BY d.issue_date, d.deal_id)) AS running_exposure_ils\nFROM deals d JOIN customers c ON c.customer_id=d.customer_id\nWHERE d.status IN ('Financed','Overdue')\nORDER BY c.customer_name, d.issue_date;`],
@@ -121,6 +148,7 @@ function renderFxNote(){
     db=new SQL.Database(); buildTables();
     renderKpis(); renderCharts(); renderAgingPivot(); renderRecent();
     buildExceptions(); renderExceptions();
+    renderRecon();
     setupAI();
     renderSchema(); renderChips(); runQuery($('editor').value);
     renderFxNote();
@@ -132,6 +160,7 @@ function buildTables(){
   db.run(`CREATE TABLE customers(customer_id INTEGER PRIMARY KEY,customer_name TEXT,industry TEXT,onboarded_date TEXT,credit_rating TEXT,credit_limit INTEGER);`);
   db.run(`CREATE TABLE deals(deal_id INTEGER PRIMARY KEY,invoice_number TEXT,customer_id INTEGER,bill_to TEXT,invoice_amount REAL,currency TEXT,issue_date TEXT,due_date TEXT,payment_terms TEXT,advance_rate REAL,advance_amount REAL,fee_amount REAL,deal_type TEXT,status TEXT,financed_date TEXT,repaid_date TEXT,risk_score INTEGER);`);
   db.run(`CREATE TABLE deal_events(event_id INTEGER PRIMARY KEY,deal_id INTEGER,event_type TEXT,event_date TEXT,actor TEXT);`);
+  db.run(`CREATE TABLE payments(payment_id INTEGER PRIMARY KEY,deal_id INTEGER,payer TEXT,reference TEXT,amount REAL,received_date TEXT);`);
   db.run("BEGIN");
   let s=db.prepare("INSERT INTO customers VALUES (?,?,?,?,?,?)");
   customers.forEach(x=>s.run([x.customer_id,x.customer_name,x.industry,x.onboarded_date,x.credit_rating,x.credit_limit])); s.free();
@@ -139,6 +168,8 @@ function buildTables(){
   deals.forEach(x=>d.run([x.deal_id,x.invoice_number,x.customer_id,x.bill_to,x.invoice_amount,x.currency,x.issue_date,x.due_date,x.payment_terms,x.advance_rate,x.advance_amount,x.fee_amount,x.deal_type,x.status,x.financed_date,x.repaid_date,x.risk_score])); d.free();
   let e=db.prepare("INSERT INTO deal_events VALUES (?,?,?,?,?)");
   events.forEach(x=>e.run([x.event_id,x.deal_id,x.event_type,x.event_date,x.actor])); e.free();
+  let p=db.prepare("INSERT INTO payments VALUES (?,?,?,?,?,?)");
+  payments.forEach(x=>p.run([x.payment_id,x.deal_id,x.payer,x.reference,x.amount,x.received_date])); p.free();
   db.run("COMMIT");
 }
 
@@ -401,6 +432,70 @@ function renderExceptions(){
 
   $('rulesNote').innerHTML=`<b>How the engine works</b>Each rule is a SQL query run against the live ledger — no manual review. Rules in force: `+
     RULES.map(r=>`<code>${r.name}</code>`).join(' ')+`. Re-running against new data re-flags everything automatically. The "Rule impact" column is per-rule and can overlap across rules; the "At-risk exposure" tile above counts each flagged invoice's outstanding advance only once.`;
+}
+
+/* ---------- reconciliation (payments ↔ invoices) ---------- */
+let reconRows=null, reconFilter='All';
+function reconSql(){
+  return `SELECT d.deal_id, d.invoice_number, s.customer_name, d.bill_to, d.status,
+       ROUND(d.invoice_amount) AS invoice_ils,
+       ROUND(COALESCE(SUM(p.amount),0)) AS paid_ils,
+       ROUND(COALESCE(SUM(p.amount),0)-d.invoice_amount) AS variance_ils,
+       COUNT(p.payment_id) AS pay_count,
+       CASE WHEN COUNT(p.payment_id)=0 THEN 'Unpaid'
+            WHEN ABS(SUM(p.amount)-d.invoice_amount)<=1 THEN 'Matched'
+            WHEN SUM(p.amount)<d.invoice_amount THEN 'Short-paid'
+            ELSE 'Overpaid' END AS match_status
+FROM deals d JOIN customers s ON s.customer_id=d.customer_id
+LEFT JOIN payments p ON p.deal_id=d.deal_id
+WHERE d.status IN ('Repaid','Overdue')
+GROUP BY d.deal_id
+ORDER BY (match_status='Matched'), ABS(COALESCE(SUM(p.amount),0)-d.invoice_amount) DESC`;
+}
+function renderRecon(){
+  if(!reconRows) reconRows=rows(reconSql());
+  const received=one("SELECT ROUND(COALESCE(SUM(amount),0)) FROM payments")||0;
+  const unappliedAmt=one("SELECT ROUND(COALESCE(SUM(amount),0)) FROM payments WHERE deal_id IS NULL")||0;
+  const unappliedCnt=one("SELECT COUNT(*) FROM payments WHERE deal_id IS NULL");
+  const repaidRows=reconRows.filter(r=>r.status==='Repaid');
+  const matched=repaidRows.filter(r=>r.match_status==='Matched').length;
+  const short=reconRows.filter(r=>r.match_status==='Short-paid').length;
+  const over=reconRows.filter(r=>r.match_status==='Overpaid').length;
+  $('reconKpis').innerHTML=[
+    {label:'Cash received',val:'₪'+money(received),cls:''},
+    {label:'Applied to invoices',val:'₪'+money(received-unappliedAmt),cls:''},
+    {label:'Unapplied cash',val:'₪'+money(unappliedAmt),meta:unappliedCnt+' remittances',cls:'alert'},
+    {label:'Auto-matched (repaid)',val:Math.round(matched/(repaidRows.length||1)*100)+'<small>%</small>',cls:'good'},
+    {label:'Short-paid',val:short,cls:''},
+    {label:'Overpaid',val:over,cls:''}
+  ].map(c=>`<div class="kpi-card ${c.cls}"><div class="label">${c.label}</div><div class="val">${c.val}</div>${c.meta?`<div class="meta">${c.meta}</div>`:''}</div>`).join('');
+
+  const filters=['All','Matched','Short-paid','Overpaid','Unpaid'];
+  $('reconFilters').innerHTML=filters.map(f=>{
+    const n=f==='All'?reconRows.length:reconRows.filter(r=>r.match_status===f).length;
+    return `<div class="fchip ${reconFilter===f?'active':''}" data-f="${f}">${f}<span class="n">${n}</span></div>`;
+  }).join('');
+  $('reconFilters').querySelectorAll('.fchip').forEach(c=>c.onclick=()=>{reconFilter=c.dataset.f;renderRecon();});
+
+  const list=reconFilter==='All'?reconRows:reconRows.filter(r=>r.match_status===reconFilter);
+  let h='<thead><tr><th>Invoice</th><th>Customer</th><th>Payer</th><th>Status</th><th>Invoice ₪</th><th>Paid ₪</th><th>Variance ₪</th><th>Match</th></tr></thead><tbody>';
+  list.forEach(r=>{h+=`<tr><td class="mono">${r.invoice_number}</td><td>${r.customer_name}</td><td>${r.bill_to}</td>`+
+    `<td><span class="pill p-${r.status.replace(/\s/g,'')}">${r.status}</span></td>`+
+    `<td class="num">₪${money(r.invoice_ils)}</td><td class="num">${r.pay_count?'₪'+money(r.paid_ils):'<span class="zero">—</span>'}</td>`+
+    `<td class="num">${r.variance_ils?'₪'+money(r.variance_ils):'<span class="zero">—</span>'}</td>`+
+    `<td><span class="pill p-${r.match_status.replace(/\s/g,'')}">${r.match_status}</span></td></tr>`;});
+  if(!list.length)h+='<tr><td colspan="8" style="padding:30px;text-align:center;color:var(--faint)">No invoices in this view.</td></tr>';
+  $('reconTbl').innerHTML=h+'</tbody>';
+
+  const un=rows(`SELECT reference, payer, ROUND(amount) AS amt, received_date,
+       CAST(julianday('${fmtDate(TODAY)}')-julianday(received_date) AS INT) AS days_unapplied
+FROM payments WHERE deal_id IS NULL ORDER BY days_unapplied DESC`);
+  let u='<thead><tr><th>Reference on remittance</th><th>Payer</th><th>Amount</th><th>Received</th><th>Days unapplied</th><th>Age bucket</th></tr></thead><tbody>';
+  un.forEach(r=>{const b=r.days_unapplied<=30?'0–30':r.days_unapplied<=60?'31–60':r.days_unapplied<=90?'61–90':'90+';
+    u+=`<tr><td class="mono">${r.reference}</td><td>${r.payer}</td><td class="num">₪${money(r.amt)}</td><td class="mono">${r.received_date}</td><td class="num">${r.days_unapplied}</td><td>${b}</td></tr>`;});
+  $('unappliedTbl').innerHTML=u+'</tbody>';
+
+  $('reconNote').innerHTML=`<b>How the matching works</b>One SQL LEFT JOIN groups every cash receipt against its invoice: a settled invoice whose payments sum to the invoice amount (±₪1 rounding) is <code>Matched</code>; below it is <code>Short-paid</code>, above it <code>Overpaid</code> (including duplicate remittances), and an overdue invoice with no cash is <code>Unpaid</code>. Remittances whose reference matches no invoice in the ledger are <b>unapplied cash</b>, aged from their received date. The matching query is documented in sql/queries.sql (section C) and available as a console preset.`;
 }
 
 /* ---------- AI extraction layer ---------- */

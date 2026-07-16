@@ -23,6 +23,7 @@
     <nav class="tabs">
       <button class="active" data-view="dashboard">Dashboard</button>
       <button data-view="exceptions">Collections Watchlist</button>
+      <button data-view="recon">Reconciliation</button>
       <button data-view="ai">AI Extract</button>
       <button data-view="console">SQL Console</button>
     </nav>
@@ -34,7 +35,7 @@
       <summary>How it works &amp; assumptions</summary>
       <div class="howto-body">
         <p><b>What this is.</b> A live accounts-receivable aging console over a synthetic invoice ledger. Every figure on this page is a real SQL query executed in your browser (SQLite compiled to WebAssembly) — nothing is hard-coded.</p>
-        <p><b>Tabs.</b> <b>Dashboard</b> — portfolio KPIs, trends, receivables aging and the customer &times; bucket aging pivot. <b>Collections Watchlist</b> — rule-based risk flags on the live ledger. <b>AI Extract</b> — parse a pasted invoice and cross-check it against the ledger. <b>SQL Console</b> — run your own queries.</p>
+        <p><b>Tabs.</b> <b>Dashboard</b> — portfolio KPIs, trends, receivables aging and the customer &times; bucket aging pivot. <b>Collections Watchlist</b> — rule-based risk flags on the live ledger. <b>Reconciliation</b> — cash receipts matched against invoices, with aging of unapplied cash. <b>AI Extract</b> — parse a pasted invoice and cross-check it against the ledger. <b>SQL Console</b> — run your own queries.</p>
         <p><b>Data &amp; currency.</b> Deterministic synthetic data — 30 customers, 180 invoices, fixed seed, dates generated relative to today so the book always looks current. All amounts are shown in ILS (₪). Invoices issued in another currency are converted to ILS using the latest published exchange rate, fetched live when the page loads (with a fixed fallback if the rate service is unavailable). A small currency tag marks any invoice converted from a non-ILS original.<br><span id="fxNote" class="fx-note">Loading live rates…</span></p>
         <p><b>Credit-risk model.</b> About 70% of the book is Reverse Factoring, where the party that ultimately pays is the <b>buyer</b> (bill-to). Credit limits and exposure are still tracked against the <b>supplier</b> because the portfolio is modelled as a <b>recourse</b> book — if the buyer fails to pay, the advance is recoverable from the supplier, so supplier risk is retained. The "Open exposure by buyer" chart shows the payer-side concentration a non-recourse factor would manage instead.</p>
         <p><b>Metric definitions.</b></p>
@@ -100,6 +101,26 @@
       </div>
     </div>
     <div class="rules-note" id="rulesNote"></div>
+  </section>
+
+  <!-- RECONCILIATION -->
+  <section class="view" id="view-recon" hidden>
+    <div class="kpi-row recon-summary" id="reconKpis"></div>
+    <div class="card tbl-wrap" style="margin-top:14px;">
+      <div class="card-head">
+        <h2>Payment reconciliation</h2>
+        <span class="hint">cash receipts matched to invoices · Repaid &amp; Overdue book</span>
+      </div>
+      <div class="exc-filters" id="reconFilters"></div>
+      <div class="tbl-wrap" style="margin-top:0;">
+        <table class="data" id="reconTbl"></table>
+      </div>
+    </div>
+    <div class="card tbl-wrap" style="margin-top:14px;">
+      <div class="card-head"><h2>Unapplied cash</h2><span class="hint">remittances matching no invoice · aged from receipt</span></div>
+      <table class="data" id="unappliedTbl"></table>
+    </div>
+    <div class="rules-note" id="reconNote"></div>
   </section>
 
   <!-- AI EXTRACT -->
