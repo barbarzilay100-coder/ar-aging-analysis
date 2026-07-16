@@ -11,6 +11,10 @@ exception handling, and applied AI on a realistic fintech operations problem.
 
 > **Live demo:** https://barbarzilay100-coder.github.io/ar-aging-analysis/
 
+**Author:** Bar Barzilay — finance student (Israel) ·
+[GitHub](https://github.com/barbarzilay100-coder) ·
+[barbarzilay100@gmail.com](mailto:barbarzilay100@gmail.com)
+
 ![Dashboard — live SQL KPIs, trends and receivables aging](docs/dashboard.jpg)
 
 ![Collections Watchlist — rule-based risk flags with severity and exposure](docs/watchlist.jpg)
@@ -25,6 +29,17 @@ exception handling, and applied AI on a realistic fintech operations problem.
 | **Collections Watchlist** | 7 SQL rules that scan the ledger and flag duplicates, credit-limit breaches, advance mismatches, overdue receivables, high-risk exposure and stuck invoices — with severity and at-risk exposure. |
 | **AI Extract** | Paste an invoice → an LLM extracts structured fields → the app cross-checks them against the database (duplicate invoice, known/new customer, remaining credit room, amount sanity, date integrity) and returns a risk summary. |
 | **SQL Console** | A query editor over the live database with a schema browser and preset queries — the SQL behind the dashboard is fully inspectable. |
+
+## Skills demonstrated
+
+| Skill | Where it shows up |
+|---|---|
+| **SQL** | Every dashboard number is a live SQLite query; the 7 watchlist rules and console presets are documented in [`sql/queries.sql`](sql/queries.sql). |
+| **Data modelling** | Relational 3-table ledger (`customers` / `deals` / `deal_events`) with a lifecycle audit trail. |
+| **BI dashboards** | KPI cards and trend / status / aging charts, all driven from the database — no hard-coded figures. |
+| **Exception handling & reconciliation** | A rule engine flags duplicate invoices, credit-limit breaches, advance mismatches and overdue receivables; AI-extracted fields are reconciled against the ledger. |
+| **Accuracy & attention to detail** | Deterministic seeded dataset, headless sanity-test harness ([`tests/sanity.cjs`](tests/sanity.cjs)), escaping of all untrusted text before rendering. |
+| **Applied AI** | LLM invoice extraction with ledger cross-check and a graceful offline fallback. |
 
 ## Architecture
 
