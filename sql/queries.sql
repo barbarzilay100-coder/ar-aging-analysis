@@ -67,6 +67,46 @@ FROM deals
 GROUP BY risk_band
 ORDER BY exposure_ils DESC;
 
+-- A8. Running exposure per customer (window function): each financed invoice
+--     with the customer's cumulative outstanding advance up to that point.
+SELECT c.customer_name,
+       d.issue_date,
+       ROUND(d.advance_amount) AS advance_ils,
+       ROUND(SUM(d.advance_amount) OVER (PARTITION BY d.customer_id
+             ORDER BY d.issue_date, d.deal_id)) AS running_exposure_ils
+FROM deals d
+JOIN customers c ON c.customer_id = d.customer_id
+WHERE d.status IN ('Financed', 'Overdue')
+ORDER BY c.customer_name, d.issue_date;
+
+-- A9. Overdue receivables ranked by outstanding advance (window function).
+SELECT RANK() OVER (ORDER BY d.advance_amount DESC) AS rank,
+       d.invoice_number,
+       c.customer_name,
+       d.due_date,
+       CAST(julianday('now') - julianday(d.due_date) AS INT) AS days_overdue,
+       ROUND(d.advance_amount) AS advance_ils
+FROM deals d
+JOIN customers c ON c.customer_id = d.customer_id
+WHERE d.status = 'Overdue'
+ORDER BY rank;
+
+-- A10. Repayment-rate cohorts by issue month (CTE): of the invoices that have
+--      reached an outcome (Repaid or Overdue), what share was repaid?
+WITH settled AS (
+    SELECT substr(issue_date, 1, 7) AS issue_month,
+           CASE WHEN status = 'Repaid' THEN 1 ELSE 0 END AS repaid
+    FROM deals
+    WHERE status IN ('Repaid', 'Overdue')
+)
+SELECT issue_month,
+       COUNT(*)                 AS settled_invoices,
+       SUM(repaid)              AS repaid_invoices,
+       ROUND(AVG(repaid) * 100) AS repayment_rate_pct
+FROM settled
+GROUP BY issue_month
+ORDER BY issue_month;
+
 -- =====================================================================
 -- B. COLLECTIONS WATCHLIST  (each rule is one query; the app flags every hit)
 -- =====================================================================
