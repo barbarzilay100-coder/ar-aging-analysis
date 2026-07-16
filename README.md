@@ -53,6 +53,8 @@ ar-aging-analysis/
 ├─ sql/
 │  ├─ schema.sql     relational schema
 │  └─ queries.sql    analytics queries + collection rules
+├─ tests/
+│  └─ sanity.cjs     data-generator sanity checks
 ├─ docs/             screenshots
 ├─ README.md
 └─ LICENSE
@@ -91,6 +93,19 @@ python3 -m http.server 8000
 ```
 
 Or open `index.html` directly in a browser.
+
+## Tests
+
+`tests/sanity.cjs` evaluates the data generator headlessly and asserts the
+invariants of the synthetic ledger — row counts, referential integrity, date
+consistency, the deliberately planted data-quality issues, and determinism:
+
+```bash
+node tests/sanity.cjs
+```
+
+(No Node? On macOS the same file runs under the built-in JavaScriptCore shell —
+see the header of the file.)
 
 ## Deploy (GitHub Pages)
 
