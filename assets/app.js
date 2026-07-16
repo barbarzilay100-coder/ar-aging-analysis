@@ -150,7 +150,7 @@ function renderFxNote(){
     renderKpis(); renderCharts(); renderAgingPivot(); renderRecent();
     buildExceptions(); renderExceptions();
     renderRecon();
-    setupAI();
+    setupAI(); setupAsk();
     renderSchema(); renderChips(); runQuery($('editor').value);
     renderFxNote();
     const v=$('veil'); v.style.opacity='0'; setTimeout(()=>v.remove(),400);
@@ -326,21 +326,182 @@ function renderChips(){const host=$('chips');host.innerHTML='';PRESETS.forEach((
 function setEditor(v){$('editor').value=v;}
 function insertText(t){const e=$('editor'),s=e.selectionStart,en=e.selectionEnd;e.value=e.value.slice(0,s)+t+e.value.slice(en);e.focus();e.selectionStart=e.selectionEnd=s+t.length;}
 const NUMERIC=/amount|ils|volume|fee|limit|deals|count|rate|score|exposure|financed|advance|risk/i;
+/* shared result-table builder — used by the SQL console and Ask the Ledger.
+   Column names and text cells are escaped: Ask can render model-written SQL. */
+function resultsTableHTML({columns,values}){
+  let html='<table class="grid-tbl"><thead><tr>';columns.forEach(c=>html+=`<th>${esc(c)}</th>`);html+='</tr></thead><tbody>';
+  values.forEach(row=>{html+='<tr>';row.forEach((cell,idx)=>{const col=columns[idx];
+    if(col==='status'&&cell!=null){html+=`<td><span class="pill p-${String(cell).replace(/\s/g,'')}">${esc(cell)}</span></td>`;}
+    else if(typeof cell==='number'&&NUMERIC.test(col)){html+=`<td class="num">${col.includes('rate')?cell:money(cell)}</td>`;}
+    else{html+=`<td>${cell==null?'<span style="color:#B9C0CC">null</span>':esc(cell)}</td>`;}});html+='</tr>';});
+  return html+'</tbody></table>';
+}
 function renderQueryResults(res){
   const host=$('results');
   if(!res.length){host.innerHTML='<div class="empty-state">Query ran successfully — no rows returned.</div>';$('rowcount').textContent='0 rows';return;}
-  const {columns,values}=res[0];
-  let html='<table class="grid-tbl"><thead><tr>';columns.forEach(c=>html+=`<th>${c}</th>`);html+='</tr></thead><tbody>';
-  values.forEach(row=>{html+='<tr>';row.forEach((cell,idx)=>{const col=columns[idx];
-    if(col==='status'&&cell!=null){html+=`<td><span class="pill p-${String(cell).replace(/\s/g,'')}">${cell}</span></td>`;}
-    else if(typeof cell==='number'&&NUMERIC.test(col)){html+=`<td class="num">${col.includes('rate')?cell:money(cell)}</td>`;}
-    else{html+=`<td>${cell==null?'<span style="color:#B9C0CC">null</span>':cell}</td>`;}});html+='</tr>';});
-  html+='</tbody></table>';host.innerHTML=html;
-  $('rowcount').textContent=`${values.length} row${values.length!==1?'s':''}`;
+  host.innerHTML=resultsTableHTML(res[0]);
+  const n=res[0].values.length;
+  $('rowcount').textContent=`${n} row${n!==1?'s':''}`;
 }
 function runQuery(sql){if(!db)return;const t0=performance.now();try{const res=db.exec(sql);const ms=(performance.now()-t0).toFixed(1);renderQueryResults(res);$('status').textContent=`ok · ${ms} ms`;$('status').classList.remove('err');}catch(err){$('results').innerHTML=`<div class="empty-state" style="color:var(--danger)">SQL error: ${err.message}</div>`;$('status').textContent='error';$('status').classList.add('err');$('rowcount').textContent='—';}}
 $('run').onclick=()=>runQuery($('editor').value);
 $('editor').addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();runQuery($('editor').value);}});
+
+/* ---------- Ask the Ledger (NL -> SQL analyst) ----------
+   Deterministic core: pattern-matched intents run curated SQL locally.
+   Optional layer: unmatched questions go to Claude, which may only WRITE a
+   read-only SELECT — this app validates and executes it, so every number on
+   screen still comes from the database, never from the model.
+   The intent queries are documented in sql/queries.sql (section D). */
+const ASK_EXAMPLES=[
+  "How much is overdue right now?",
+  "Which customers should we chase first?",
+  "How old is the open book?",
+  "What is our DSO?",
+  "Any cash we couldn't match to an invoice?",
+  "Who is over their credit limit?"
+];
+const ASK_INTENTS=[
+ {test:/(how much|what|total).*overdue|overdue.*(total|exposure|right now)|^overdue/i,
+  sql:`SELECT COUNT(*) AS overdue_invoices,\n       ROUND(SUM(advance_amount)) AS overdue_ils,\n       CAST(MAX(julianday(date('now'))-julianday(due_date)) AS INT) AS oldest_days\nFROM deals\nWHERE status='Overdue'`,
+  say:r=>r.length&&r[0].overdue_ils!=null
+    ?`₪${money(r[0].overdue_ils)} of advances is overdue across ${r[0].overdue_invoices} invoices — the oldest is ${r[0].oldest_days} days past due.`
+    :'Nothing is overdue right now.'},
+ {test:/chase|riskiest|risky|worst customer|collect first|priorit|who owes/i,
+  sql:`SELECT c.customer_name, c.credit_rating,\n       COUNT(*) AS overdue_invoices,\n       ROUND(SUM(d.advance_amount)) AS overdue_ils,\n       CAST(MAX(julianday(date('now'))-julianday(d.due_date)) AS INT) AS oldest_days\nFROM deals d\nJOIN customers c ON c.customer_id=d.customer_id\nWHERE d.status='Overdue'\nGROUP BY d.customer_id\nORDER BY overdue_ils DESC\nLIMIT 5`,
+  say:r=>r.length
+    ?`Start with ${esc(r[0].customer_name)} (rating ${esc(r[0].credit_rating)}) — ₪${money(r[0].overdue_ils)} overdue on ${r[0].overdue_invoices} invoice(s), the oldest ${r[0].oldest_days} days past due.`
+    :'No overdue customers — nothing to chase.'},
+ {test:/aging|bucket|how old|past due|over (30|60|90)/i,
+  sql:`SELECT CASE WHEN julianday(date('now'))-julianday(due_date)<=0 THEN 'Current'\n            WHEN julianday(date('now'))-julianday(due_date)<=30 THEN '1-30'\n            WHEN julianday(date('now'))-julianday(due_date)<=60 THEN '31-60'\n            WHEN julianday(date('now'))-julianday(due_date)<=90 THEN '61-90'\n            ELSE '90+' END AS bucket,\n       COUNT(*) AS invoices,\n       ROUND(SUM(advance_amount)) AS exposure_ils\nFROM deals\nWHERE status IN ('Financed','Overdue')\nGROUP BY bucket\nORDER BY MIN(julianday(date('now'))-julianday(due_date))`,
+  say:r=>{if(!r.length)return 'The open book is empty.';
+    const tot=r.reduce((a,x)=>a+(x.exposure_ils||0),0);
+    const cur=(r.find(x=>x.bucket==='Current')||{}).exposure_ils||0;
+    const od=tot-cur;
+    return `₪${money(tot)} is open; ₪${money(od)} of it (${tot?Math.round(od/tot*100):0}%) is already past due.`;}},
+ {test:/\bdso\b|days sales outstanding/i,
+  sql:`SELECT ROUND(\n         (SELECT SUM(invoice_amount) FROM deals WHERE status IN ('Financed','Overdue'))\n         * 90.0\n         / NULLIF((SELECT SUM(invoice_amount) FROM deals\n                   WHERE issue_date >= date('now','-90 day')), 0)\n       ) AS dso_90d`,
+  say:r=>r.length&&r[0].dso_90d!=null?`Standard 90-day DSO is ${r[0].dso_90d} days.`:'DSO cannot be computed — no invoiced volume in the trailing 90 days.'},
+ {test:/days to collect|how long.*(collect|paid|repay)/i,
+  sql:`SELECT ROUND(AVG(julianday(COALESCE(repaid_date, date('now'))) - julianday(issue_date))) AS avg_days_to_collect\nFROM deals\nWHERE status IN ('Financed','Overdue','Repaid')`,
+  say:r=>`An invoice stays open ${r[0].avg_days_to_collect} days on average, from issue to repayment (or to today if unpaid).`},
+ {test:/unapplied|unmatched|(cash|payment|remittance).*match|match.*invoice/i,
+  sql:`SELECT payment_id, reference, payer,\n       ROUND(amount) AS amount_ils, received_date,\n       CAST(julianday(date('now'))-julianday(received_date) AS INT) AS days_unapplied\nFROM payments\nWHERE deal_id IS NULL\nORDER BY days_unapplied DESC`,
+  say:r=>r.length
+    ?`${r.length} remittance(s) totalling ₪${money(r.reduce((a,x)=>a+(x.amount_ils||0),0))} match no invoice in the ledger — the oldest has sat unapplied ${r[0].days_unapplied} days.`
+    :'All cash receipts are matched to invoices — no unapplied cash.'},
+ {test:/repayment|repaid.*(rate|share|percent)|collection rate/i,
+  sql:`SELECT COUNT(*) AS settled_invoices,\n       SUM(CASE WHEN status='Repaid' THEN 1 ELSE 0 END) AS repaid_invoices,\n       ROUND(AVG(CASE WHEN status='Repaid' THEN 100.0 ELSE 0 END)) AS repayment_rate_pct\nFROM deals\nWHERE status IN ('Repaid','Overdue')`,
+  say:r=>`Of ${r[0].settled_invoices} invoices that reached an outcome, ${r[0].repaid_invoices} were repaid — a ${r[0].repayment_rate_pct}% repayment rate.`},
+ {test:/credit limit|over.*limit|breach/i,
+  sql:`SELECT c.customer_id, c.customer_name, c.credit_limit,\n       ROUND(SUM(d.advance_amount)) AS exposure\nFROM deals d\nJOIN customers c ON c.customer_id=d.customer_id\nWHERE d.status IN ('Financed','Overdue')\nGROUP BY c.customer_id\nHAVING exposure > c.credit_limit\nORDER BY exposure DESC`,
+  say:r=>r.length
+    ?`${r.length} customer(s) are over their credit limit — worst is ${esc(r[0].customer_name)}, ₪${money(r[0].exposure)} against a ₪${money(r[0].credit_limit)} limit.`
+    :'No customer is over its credit limit.'},
+ {test:/top|biggest|largest|concentration/i,
+  sql:`SELECT c.customer_name, c.credit_rating,\n       COUNT(*) AS invoices,\n       ROUND(SUM(d.advance_amount)) AS financed_ils\nFROM deals d\nJOIN customers c ON c.customer_id=d.customer_id\nWHERE d.status IN ('Financed','Repaid','Overdue')\nGROUP BY c.customer_id\nORDER BY financed_ils DESC\nLIMIT 10`,
+  say:r=>r.length?`${esc(r[0].customer_name)} leads the book with ₪${money(r[0].financed_ils)} financed across ${r[0].invoices} invoices.`:'No financed volume yet.'},
+ {test:/buyer|bill.to|payer/i,
+  sql:`SELECT bill_to AS buyer, COUNT(*) AS invoices,\n       ROUND(SUM(advance_amount)) AS open_exposure_ils\nFROM deals\nWHERE status IN ('Financed','Overdue')\nGROUP BY bill_to\nORDER BY open_exposure_ils DESC`,
+  say:r=>r.length?`Payer-side risk concentrates on ${esc(r[0].buyer)} — ₪${money(r[0].open_exposure_ils)} of open exposure.`:'No open exposure.'},
+ {test:/status|pipeline|breakdown|split/i,
+  sql:`SELECT status, COUNT(*) AS invoices,\n       ROUND(SUM(advance_amount)) AS financed_ils\nFROM deals\nGROUP BY status\nORDER BY financed_ils DESC`,
+  say:r=>r.length?`The ledger spans ${r.length} statuses; the largest by financed volume is ${esc(r[0].status)}.`:'The ledger is empty.'}
+];
+const askRows=res=>!res.length?[]:res[0].values.map(v=>{const o={};res[0].columns.forEach((c,i)=>o[c]=v[i]);return o;});
+function sqlIsSafeSelect(sql){
+  const s=String(sql||'').replace(/--[^\n]*/g,' ').replace(/\/\*[\s\S]*?\*\//g,' ').trim().replace(/;\s*$/,'');
+  if(!/^(select|with)\b/i.test(s)) return false;
+  if(s.includes(';')) return false;
+  return !/\b(insert|update|delete|drop|alter|create|attach|detach|pragma|vacuum|reindex|replace)\b/i.test(s);
+}
+function askCardStart(q){
+  const el=document.createElement('div');
+  el.className='card ask-card';
+  el.innerHTML=`<div class="ask-q">“${esc(q)}”<span class="ask-mode">thinking…</span></div><div class="ask-a">Working on it…</div>`;
+  $('askThread').prepend(el);
+  return el;
+}
+function askCardFill(el,{mode,note,sql,res}){
+  const n=res.length?res[0].values.length:0;
+  el.innerHTML=
+    `<div class="ask-q">“${esc(el.dataset.q)}”<span class="ask-mode">${mode} · ${n} row${n!==1?'s':''}</span></div>`+
+    `<div class="ask-a">${note}</div>`+
+    `<pre class="ask-sql">${esc(sql)}</pre>`+
+    `<span class="chip ask-open">Open in SQL Console</span>`+
+    `<div class="ask-results">${res.length?resultsTableHTML(res[0]):'<div class="empty-state">No rows returned.</div>'}</div>`;
+  el.querySelector('.ask-open').addEventListener('click',()=>{
+    document.querySelector('nav.tabs button[data-view="console"]').click();
+    setEditor(sql+';'); runQuery(sql);
+  });
+}
+function askCardFail(el,msg){
+  el.innerHTML=
+    `<div class="ask-q">“${esc(el.dataset.q)}”<span class="ask-mode">no answer</span></div>`+
+    `<div class="ask-a">${msg}</div>`+
+    `<div class="chips ask-retry"></div>`;
+  const host=el.querySelector('.ask-retry');
+  ASK_EXAMPLES.forEach(x=>{const c=document.createElement('div');c.className='chip';c.textContent=x;c.onclick=()=>askQuestion(x);host.appendChild(c);});
+}
+async function askQuestion(q){
+  q=(q||'').trim(); if(!q||!db) return;
+  const el=askCardStart(q); el.dataset.q=q;
+  const intent=ASK_INTENTS.find(i=>i.test.test(q));
+  if(intent){
+    try{
+      const res=db.exec(intent.sql);
+      askCardFill(el,{mode:'built-in analyst',note:intent.say(askRows(res)),sql:intent.sql,res});
+    }catch(e){askCardFail(el,'SQL error: '+esc(e.message));}
+    return;
+  }
+  try{
+    const out=await askClaudeSQL(q);
+    if(!out||!sqlIsSafeSelect(out.sql)) throw new Error('the model did not return a single read-only SELECT');
+    const res=db.exec(out.sql.trim().replace(/;\s*$/,''));
+    askCardFill(el,{mode:'Claude-written SQL, executed locally',note:esc(out.note||'Results below.'),sql:out.sql.trim().replace(/;\s*$/,''),res});
+  }catch(e){
+    const hasKey=!!($('apiKey')?.value||'').trim();
+    askCardFail(el,hasKey
+      ?'Claude could not answer this one: '+esc(e.message)+' — try rephrasing, or one of the examples below.'
+      :'That question is outside the built-in analyst answers, and no API key is set. Paste an Anthropic API key in the <b>AI&nbsp;Extract</b> tab and ask again — Claude will write the SQL and this app will validate and run it. Or try an example:');
+  }
+}
+async function askClaudeSQL(q){
+  const prompt=`You are the analyst behind an accounts-receivable console backed by an in-browser SQLite database.
+
+Schema (SQLite):
+customers(customer_id PK, customer_name, industry, onboarded_date, credit_rating 'A'-'D', credit_limit)
+deals(deal_id PK, invoice_number, customer_id FK, bill_to, invoice_amount, currency, issue_date, due_date, payment_terms, advance_rate, advance_amount, fee_amount, deal_type, status, financed_date, repaid_date, risk_score 1-100)
+  -- status is one of: Initiated / Under Review / Approved / Financed / Repaid / Overdue / Rejected
+deal_events(event_id PK, deal_id FK, event_type, event_date, actor)
+payments(payment_id PK, deal_id FK (NULL = unapplied cash), payer, reference, amount, received_date)
+
+Conventions: amounts are ILS; dates are ISO 'YYYY-MM-DD' strings — use julianday(date('now')) for day arithmetic; open receivables = status IN ('Financed','Overdue').
+
+Question: """${q}"""
+
+Respond ONLY with valid JSON: {"sql": "...", "note": "..."}.
+"sql" must be ONE read-only SELECT (or WITH...SELECT) statement in SQLite dialect, no semicolon, LIMIT 50 on row-level listings.
+"note" is one sentence describing what the query returns — do not invent numbers; the app runs the query and shows real results.`;
+  const key=($('apiKey')?.value||'').trim();
+  const headers={"Content-Type":"application/json"};
+  if(key){headers["x-api-key"]=key;headers["anthropic-version"]="2023-06-01";headers["anthropic-dangerous-direct-browser-access"]="true";}
+  const res=await fetch("https://api.anthropic.com/v1/messages",{
+    method:"POST",headers,
+    body:JSON.stringify({model:"claude-sonnet-5",max_tokens:700,
+      system:"You are a precise SQL analyst. Output only valid JSON.",
+      messages:[{role:"user",content:prompt}]})
+  });
+  if(!res.ok) throw new Error("HTTP "+res.status);
+  const data=await res.json();
+  return parseJSON(data.content.filter(i=>i.type==='text').map(i=>i.text).join(''));
+}
+function setupAsk(){
+  const host=$('askChips'); if(!host) return;
+  ASK_EXAMPLES.forEach(x=>{const c=document.createElement('div');c.className='chip';c.textContent=x;c.onclick=()=>askQuestion(x);host.appendChild(c);});
+  $('askBtn').onclick=()=>askQuestion($('askInput').value);
+  $('askInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();askQuestion($('askInput').value);}});
+}
 
 /* ---------- exception engine (SQL rule scans) ---------- */
 let EXC=[], excFilter='All', flaggedDeals=new Set();

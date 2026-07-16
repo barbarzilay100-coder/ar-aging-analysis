@@ -252,3 +252,49 @@ JOIN payments p ON p.deal_id = d.deal_id
 GROUP BY d.deal_id
 HAVING ABS(SUM(p.amount) - d.invoice_amount) > 1
 ORDER BY ABS(SUM(p.amount) - d.invoice_amount) DESC;
+
+-- =====================================================================
+-- D. ASK-THE-LEDGER ASSISTANT  (built-in intents; each answer card shows
+--    the query it ran. Several intents reuse queries documented above:
+--    status split A1, top customers A3, days-to-collect A5, DSO A6,
+--    buyer exposure A12, credit-limit breaches B3, unapplied cash C2.)
+-- =====================================================================
+
+-- D1. Overdue snapshot — total, count and age of the worst invoice.
+SELECT COUNT(*) AS overdue_invoices,
+       ROUND(SUM(advance_amount)) AS overdue_ils,
+       CAST(MAX(julianday(date('now'))-julianday(due_date)) AS INT) AS oldest_days
+FROM deals
+WHERE status='Overdue';
+
+-- D2. Collections priority — customers to chase first, by overdue advance.
+SELECT c.customer_name, c.credit_rating,
+       COUNT(*) AS overdue_invoices,
+       ROUND(SUM(d.advance_amount)) AS overdue_ils,
+       CAST(MAX(julianday(date('now'))-julianday(d.due_date)) AS INT) AS oldest_days
+FROM deals d
+JOIN customers c ON c.customer_id=d.customer_id
+WHERE d.status='Overdue'
+GROUP BY d.customer_id
+ORDER BY overdue_ils DESC
+LIMIT 5;
+
+-- D3. Open-book aging buckets (whole portfolio, not per customer).
+SELECT CASE WHEN julianday(date('now'))-julianday(due_date)<=0 THEN 'Current'
+            WHEN julianday(date('now'))-julianday(due_date)<=30 THEN '1-30'
+            WHEN julianday(date('now'))-julianday(due_date)<=60 THEN '31-60'
+            WHEN julianday(date('now'))-julianday(due_date)<=90 THEN '61-90'
+            ELSE '90+' END AS bucket,
+       COUNT(*) AS invoices,
+       ROUND(SUM(advance_amount)) AS exposure_ils
+FROM deals
+WHERE status IN ('Financed','Overdue')
+GROUP BY bucket
+ORDER BY MIN(julianday(date('now'))-julianday(due_date));
+
+-- D4. Overall repayment rate across settled invoices.
+SELECT COUNT(*) AS settled_invoices,
+       SUM(CASE WHEN status='Repaid' THEN 1 ELSE 0 END) AS repaid_invoices,
+       ROUND(AVG(CASE WHEN status='Repaid' THEN 100.0 ELSE 0 END)) AS repayment_rate_pct
+FROM deals
+WHERE status IN ('Repaid','Overdue');

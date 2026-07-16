@@ -25,6 +25,7 @@
       <button data-view="exceptions">Collections Watchlist</button>
       <button data-view="recon">Reconciliation</button>
       <button data-view="ai">AI Extract</button>
+      <button data-view="ask">Ask the Ledger</button>
       <button data-view="console">SQL Console</button>
     </nav>
   </header>
@@ -35,7 +36,7 @@
       <summary>How it works &amp; assumptions</summary>
       <div class="howto-body">
         <p><b>What this is.</b> A live accounts-receivable aging console over a synthetic invoice ledger. Every figure on this page is a real SQL query executed in your browser (SQLite compiled to WebAssembly) — nothing is hard-coded.</p>
-        <p><b>Tabs.</b> <b>Dashboard</b> — portfolio KPIs, trends, receivables aging and the customer &times; bucket aging pivot. <b>Collections Watchlist</b> — rule-based risk flags on the live ledger. <b>Reconciliation</b> — cash receipts matched against invoices, with aging of unapplied cash. <b>AI Extract</b> — parse a pasted invoice and cross-check it against the ledger. <b>SQL Console</b> — run your own queries.</p>
+        <p><b>Tabs.</b> <b>Dashboard</b> — portfolio KPIs, trends, receivables aging and the customer &times; bucket aging pivot. <b>Collections Watchlist</b> — rule-based risk flags on the live ledger. <b>Reconciliation</b> — cash receipts matched against invoices, with aging of unapplied cash. <b>AI Extract</b> — parse a pasted invoice and cross-check it against the ledger. <b>Ask the Ledger</b> — plain-English questions answered with live SQL. <b>SQL Console</b> — run your own queries.</p>
         <p><b>Data &amp; currency.</b> Deterministic synthetic data — 30 customers, 180 invoices, fixed seed, dates generated relative to today so the book always looks current. All amounts are shown in ILS (₪). Invoices issued in another currency are converted to ILS using the latest published exchange rate, fetched live when the page loads (with a fixed fallback if the rate service is unavailable). A small currency tag marks any invoice converted from a non-ILS original.<br><span id="fxNote" class="fx-note">Loading live rates…</span></p>
         <p><b>Credit-risk model.</b> About 70% of the book is Reverse Factoring, where the party that ultimately pays is the <b>buyer</b> (bill-to). Credit limits and exposure are still tracked against the <b>supplier</b> because the portfolio is modelled as a <b>recourse</b> book — if the buyer fails to pay, the advance is recoverable from the supplier, so supplier risk is retained. The "Open exposure by buyer" chart shows the payer-side concentration a non-recourse factor would manage instead.</p>
         <p><b>Metric definitions.</b></p>
@@ -147,6 +148,23 @@
         </div>
       </div>
     </div>
+  </section>
+
+  <!-- ASK THE LEDGER -->
+  <section class="view" id="view-ask" hidden>
+    <div class="card">
+      <div class="card-head"><h2>Ask the Ledger</h2><span class="hint">every answer is a live SQL query — numbers never come from a model</span></div>
+      <p class="ask-intro">Ask a question about the receivables book in plain English. The assistant picks (or writes)
+      the SQL, runs it on the in-browser SQLite database, and shows the answer <b>together with the query behind it</b>.</p>
+      <div class="chips" id="askChips"></div>
+      <div class="ask-row">
+        <input type="text" id="askInput" class="ask-input" placeholder="e.g. Which customers should we chase first?" autocomplete="off">
+        <button class="run" id="askBtn">Ask</button>
+      </div>
+      <p class="ask-note">The built-in analyst answers work fully offline. Free-form questions beyond them are sent to Claude,
+      which writes a single read-only <code>SELECT</code> — validated and executed locally — using the API key from the AI&nbsp;Extract tab.</p>
+    </div>
+    <div id="askThread"></div>
   </section>
 
   <!-- CONSOLE -->

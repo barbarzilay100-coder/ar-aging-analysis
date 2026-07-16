@@ -30,6 +30,7 @@ exception handling, and applied AI on a realistic fintech operations problem.
 | **Collections Watchlist** | 7 SQL rules that scan the ledger and flag duplicates, credit-limit breaches, advance mismatches, overdue receivables, high-risk exposure and stuck invoices — with severity and at-risk exposure. |
 | **Reconciliation** | Cash receipts matched to invoices in a single SQL LEFT JOIN — every settled invoice classified Matched / Short-paid / Overpaid / Unpaid with its variance, plus an aged view of unapplied cash. The generator plants split remittances, a duplicate payment, short-pays and unknown references for the module to catch. |
 | **AI Extract** | Paste an invoice → an LLM extracts structured fields → the app cross-checks them against the database (duplicate invoice, known/new customer, remaining credit room, amount sanity, date integrity) and returns a risk summary. |
+| **Ask the Ledger** | A natural-language analyst over the same database. Common questions are answered by a built-in intent router running curated SQL locally (works fully offline); free-form questions are sent to Claude, which writes a single read-only `SELECT` that the app **validates and executes locally**. Every answer card shows the SQL and the live result table — numbers never come from the model. |
 | **SQL Console** | A query editor over the live database with a schema browser and preset queries — the SQL behind the dashboard is fully inspectable. |
 
 ## Skills demonstrated
@@ -182,7 +183,8 @@ appears within a minute.
 
 - **Inside the Claude runtime**, the extraction call is handled for you — no key needed.
 - **Self-hosted** (GitHub Pages), paste your own Anthropic API key into the field on
-  the AI Extract tab. It's held in memory only — never stored, never committed.
+  the AI Extract tab — the same key also powers free-form Ask-the-Ledger questions.
+  It's held in memory only — never stored, never committed.
 - With no key and outside Claude, the app falls back to a local heuristic parser so
   the cross-check still demonstrates.
 
