@@ -11,6 +11,10 @@ exception handling, and applied AI on a realistic fintech operations problem.
 
 > **Live demo:** https://barbarzilay100-coder.github.io/ar-aging-analysis/
 
+![Dashboard — live SQL KPIs, trends and receivables aging](docs/dashboard.jpg)
+
+![Collections Watchlist — rule-based risk flags with severity and exposure](docs/watchlist.jpg)
+
 ---
 
 ## What it does
