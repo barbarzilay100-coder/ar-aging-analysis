@@ -36,6 +36,7 @@ exception handling, and applied AI on a realistic fintech operations problem.
 | Skill | Where it shows up |
 |---|---|
 | **Excel** | Formula-driven aging workbook ([`docs/ar-aging-report.xlsx`](docs/ar-aging-report.xlsx)): `SUMIFS` pivot, named ranges, conditional formatting, tie-out check. |
+| **Python / pandas** | Independent port of the data generator plus an executed notebook that reproduces every dashboard number and asserts bit-for-bit equality with the JS ledger ([`analysis/`](analysis/)). |
 | **SQL** | Every dashboard number is a live SQLite query; the 7 watchlist rules and console presets are documented in [`sql/queries.sql`](sql/queries.sql). |
 | **Data modelling** | Relational 3-table ledger (`customers` / `deals` / `deal_events`) with a lifecycle audit trail. |
 | **BI dashboards** | KPI cards and trend / status / aging charts, all driven from the database — no hard-coded figures. |
@@ -73,6 +74,11 @@ ar-aging-analysis/
 │  └─ queries.sql    analytics queries + collection rules
 ├─ tests/
 │  └─ sanity.cjs     data-generator sanity checks
+├─ analysis/
+│  ├─ generator.py             Python port of the seeded generator
+│  ├─ ar_aging_analysis.ipynb  JS ↔ pandas cross-check notebook
+│  ├─ export_snapshot.js       exports the dated ledger snapshot
+│  └─ data/                    ledger-snapshot.json
 ├─ docs/             screenshots + Excel aging report
 ├─ README.md
 └─ LICENSE
@@ -143,6 +149,18 @@ that re-ages the whole book, conditional formatting on the overdue buckets, and 
 tie-out check against the invoice sheet. It is a dated snapshot by design — the
 app's ledger regenerates relative to today, and an aging report is a point-in-time
 cut.
+
+## Python / pandas cross-check
+
+[`analysis/ar_aging_analysis.ipynb`](analysis/ar_aging_analysis.ipynb) reconciles the
+JavaScript ledger against an **independent Python implementation**:
+[`analysis/generator.py`](analysis/generator.py) re-implements the seeded generator from
+scratch (same mulberry32 seed and draw order, JS rounding semantics), and the executed
+notebook asserts it reproduces the exported snapshot
+([`analysis/data/ledger-snapshot.json`](analysis/data/ledger-snapshot.json))
+**bit-for-bit** — then rebuilds every dashboard KPI, the aging pivot and the
+payment-reconciliation summary in pandas. Two implementations, one book: the
+cross-check is itself a reconciliation exercise.
 
 ## Deploy (GitHub Pages)
 
