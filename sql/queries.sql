@@ -44,7 +44,7 @@ FROM deals
 GROUP BY deal_type;
 
 -- A5. DSO — Days Sales Outstanding (avg days open: issue -> repayment, or today).
-SELECT ROUND(AVG(julianday(COALESCE(repaid_date, '2026-07-15')) - julianday(issue_date))) AS dso_days
+SELECT ROUND(AVG(julianday(COALESCE(repaid_date, date('now'))) - julianday(issue_date))) AS dso_days
 FROM deals
 WHERE status IN ('Financed', 'Overdue', 'Repaid');
 
