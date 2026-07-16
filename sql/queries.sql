@@ -71,13 +71,18 @@ ORDER BY exposure_ils DESC;
 -- B. COLLECTIONS WATCHLIST  (each rule is one query; the app flags every hit)
 -- =====================================================================
 
--- B1. HIGH — Duplicate invoice number (double-financing risk).
-SELECT deal_id, invoice_number, customer_id, advance_amount, issue_date
-FROM deals
-WHERE invoice_number IN (
-    SELECT invoice_number FROM deals GROUP BY invoice_number HAVING COUNT(*) > 1
+-- B1. HIGH — Duplicate invoice number for the same customer (double-financing risk).
+--     Scoped to (customer_id, invoice_number): invoice numbers are only unique per
+--     supplier, so two suppliers can both legitimately issue INV-2026-0001.
+SELECT d.deal_id, d.invoice_number, d.customer_id, d.advance_amount, d.issue_date
+FROM deals d
+WHERE EXISTS (
+    SELECT 1 FROM deals e
+    WHERE e.customer_id = d.customer_id
+      AND e.invoice_number = d.invoice_number
+      AND e.deal_id <> d.deal_id
 )
-ORDER BY invoice_number;
+ORDER BY d.invoice_number;
 
 -- B2. HIGH — Advance exceeds invoice value.
 SELECT deal_id, invoice_number, customer_id, invoice_amount, advance_amount

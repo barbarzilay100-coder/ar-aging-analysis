@@ -80,9 +80,9 @@ check('repaid_date set exactly on Repaid deals', deals.every(function (d) {
 }));
 
 /* ---- planted anomalies (the exception engine must find these) ---- */
-var invCount = {};
-deals.forEach(function (d) { invCount[d.invoice_number] = (invCount[d.invoice_number] || 0) + 1; });
-check('duplicate invoice planted', Object.keys(invCount).some(function (k) { return invCount[k] > 1; }));
+var pairCount = {};
+deals.forEach(function (d) { var k = d.customer_id + '|' + d.invoice_number; pairCount[k] = (pairCount[k] || 0) + 1; });
+check('duplicate invoice planted (same customer + number)', Object.keys(pairCount).some(function (k) { return pairCount[k] > 1; }));
 check('advance mismatches planted', deals.some(function (d) {
   return Math.abs(d.advance_amount - Math.round(d.invoice_amount * d.advance_rate)) > 1;
 }));

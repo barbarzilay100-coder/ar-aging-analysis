@@ -27,9 +27,13 @@ function generateData(){
   customers.push({customer_id:i,customer_name:name,industry:pick(industries),onboarded_date:fmtDate(addDays(TODAY,ri(0,900)-1140)),credit_rating:rating,credit_limit:Math.round(limitBase*rf(0.7,1.3)/10000)*10000});
 }
 
-  let evId=1; const invSeen={};
+  let evId=1;
   for(let i=1;i<=180;i++){
-  const sup=pick(customers);
+  let sup=pick(customers);
+  // planted anomaly: every 47th deal re-submits the first deal's invoice — same
+  // customer AND same number (invoice numbers are only unique per supplier)
+  let dupOf=null;
+  if(i%47===0&&deals.length){dupOf=deals[0];sup=customers.find(c=>c.customer_id===dupOf.customer_id);}
   let invAmt=Math.round(Math.exp(rf(9.6,13.4))/100)*100;
   const currency=pickW([["ILS",84],["USD",11],["EUR",5]]);
   invAmt=Math.round(invAmt*FX[currency]/100)*100; // normalise every invoice to ILS
@@ -52,8 +56,7 @@ function generateData(){
   else{financed=addDays(issue,ri(2,6));
     if(due<TODAY){status=pickW([["Repaid",88],["Overdue",12]]);if(status==="Repaid"){repaid=addDays(due,ri(-3,9));if(repaid>TODAY)repaid=TODAY;}} // a payment can never post after today
     else{status="Financed";}}
-  let invNo=`INV-${issue.getFullYear()}-${String(i).padStart(4,'0')}`;
-  if(i%47===0){invNo=Object.keys(invSeen)[0]||invNo;} invSeen[invNo]=true;
+  const invNo=dupOf?dupOf.invoice_number:`INV-${issue.getFullYear()}-${String(i).padStart(4,'0')}`;
   if(i%37===0){advance=Math.round(invAmt*rate)+ri(3000,15000);}
   deals.push({deal_id:i,invoice_number:invNo,customer_id:sup.customer_id,bill_to:pick(buyers),invoice_amount:invAmt,currency,issue_date:fmtDate(issue),due_date:fmtDate(due),payment_terms:`Net ${termsDays}`,advance_rate:rate,advance_amount:advance,fee_amount:fee,deal_type:dealType,status,financed_date:financed?fmtDate(financed):null,repaid_date:repaid?fmtDate(repaid):null,risk_score:risk});
   const push=(type,d)=>events.push({event_id:evId++,deal_id:i,event_type:type,event_date:fmtDate(d),actor:pick(analysts)});
@@ -247,11 +250,12 @@ $('editor').addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='E
 let EXC=[], excFilter='All', flaggedDeals=new Set();
 const RULES=[
   {id:'DUP_INV', name:'Duplicate invoice', sev:'High',
-   sql:`SELECT deal_id, invoice_number, customer_id, advance_amount AS amt, issue_date AS dt
-        FROM deals WHERE invoice_number IN
-        (SELECT invoice_number FROM deals GROUP BY invoice_number HAVING COUNT(*)>1)
-        ORDER BY invoice_number`,
-   detail:r=>`Invoice ${r.invoice_number} is attached to more than one deal — double-financing risk.`,
+   sql:`SELECT d.deal_id, d.invoice_number, d.customer_id, d.advance_amount AS amt, d.issue_date AS dt
+        FROM deals d WHERE EXISTS
+        (SELECT 1 FROM deals e WHERE e.customer_id=d.customer_id
+         AND e.invoice_number=d.invoice_number AND e.deal_id<>d.deal_id)
+        ORDER BY d.invoice_number`,
+   detail:r=>`Invoice ${r.invoice_number} is attached to more than one deal of the same customer — double-financing risk.`,
    risk:r=>r.amt},
   {id:'ADV_GT_INV', name:'Advance exceeds invoice', sev:'High',
    sql:`SELECT deal_id, invoice_number, customer_id, invoice_amount, advance_amount AS amt, issue_date AS dt
@@ -447,11 +451,18 @@ function extractHeuristic(text){
 function crossCheck(x){
   const checks=[];
   const money=n=>Number(n).toLocaleString('en-US');
-  // duplicate invoice
+  // duplicate invoice — scoped to (customer, invoice number): numbers are only unique per supplier
   if(x.invoice_number){
-    const dup=q1("SELECT COUNT(*) c FROM deals WHERE invoice_number=?",[x.invoice_number]);
-    if(dup&&dup.c>0) checks.push({s:'flag',t:'Duplicate invoice number',d:`${esc(x.invoice_number)} already exists on ${dup.c} deal(s) in the ledger — possible double-financing.`});
-    else checks.push({s:'ok',t:'Invoice number is new',d:`${esc(x.invoice_number)} not found in the ledger.`});
+    const owner=x.customer_name?q1("SELECT customer_id FROM customers WHERE lower(customer_name)=lower(?)",[x.customer_name]):null;
+    if(owner){
+      const dup=q1("SELECT COUNT(*) c FROM deals WHERE invoice_number=? AND customer_id=?",[x.invoice_number,owner.customer_id]);
+      if(dup&&dup.c>0) checks.push({s:'flag',t:'Duplicate invoice number',d:`${esc(x.invoice_number)} already exists on ${dup.c} deal(s) of this customer — possible double-financing.`});
+      else checks.push({s:'ok',t:'Invoice number is new for this customer',d:`${esc(x.invoice_number)} not found on this customer's deals (invoice numbers are only unique per supplier).`});
+    }else{
+      const dup=q1("SELECT COUNT(*) c FROM deals WHERE invoice_number=?",[x.invoice_number]);
+      if(dup&&dup.c>0) checks.push({s:'warn',t:'Invoice number seen on other suppliers',d:`${esc(x.invoice_number)} exists on ${dup.c} deal(s) of other suppliers — numbers are only unique per supplier; confirm the issuer before financing.`});
+      else checks.push({s:'ok',t:'Invoice number is new',d:`${esc(x.invoice_number)} not found in the ledger.`});
+    }
   } else checks.push({s:'warn',t:'No invoice number',d:'Could not read an invoice number from the document.'});
   // supplier match
   if(x.customer_name){

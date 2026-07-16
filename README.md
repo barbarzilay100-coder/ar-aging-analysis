@@ -89,7 +89,7 @@ All rules live in `sql/queries.sql` (section B). Summary:
 
 | # | Rule | Severity |
 |---|---|---|
-| B1 | Duplicate invoice number | High |
+| B1 | Duplicate invoice number, same customer | High |
 | B2 | Advance exceeds invoice value | High |
 | B3 | Customer exposure over credit limit | High |
 | B4 | Advance ≠ invoice × advance rate | Medium |
